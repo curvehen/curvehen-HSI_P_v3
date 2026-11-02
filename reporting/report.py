@@ -219,4 +219,36 @@ def plain_text(ctx: dict) -> str:
         f"Model: {lv['direction']}  P(up)={_pct(lv['p_up_ensemble'])}  agreement={_pct(lv['model_agreement'])}",
         f"Final after LLM: {final_direction(ctx)}",
     ]
-    lines += [f"WARN
+    lines += [f"WARNING: {w}" for w in ctx["warnings"]]
+    lines.append("Automated model output, not investment advice. Open the HTML version for details.")
+    return "\n".join(lines)
+
+
+def build_report() -> dict:
+    """Build charts and both HTML renderings; save the self-contained file."""
+    ctx = build_context()
+    imgs = charts.make_all()
+    cids = {k: f"chart_{k}" for k in imgs}
+
+    html_file = render(ctx, {k: _data_uri(p) for k, p in imgs.items()})
+    html_email = render(ctx, {k: f"cid:{cids[k]}" for k in imgs})
+
+    path = config.REPORT_DIR / f"hsi_report_{ctx['live']['feature_date']}.html"
+    path.write_text(html_file, encoding="utf-8")
+    log.info("Report saved: %s", path)
+
+    lv = ctx["live"]
+    return {
+        "path": path,
+        "html_email": html_email,
+        "text": plain_text(ctx),
+        "images": {cids[k]: imgs[k] for k in imgs},  # cid -> png path
+        "subject": (f"HSI forecast {lv['target_date']}: {final_direction(ctx)} "
+                    f"(P(up) {_pct(lv['p_up_ensemble'])})"),
+    }
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    print(build_report()["path"])
