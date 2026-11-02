@@ -128,3 +128,5 @@ LLM_PATH = DATA_PROC / "llm_review.json"
 TRACK_PATH = DATA_PROC / "prediction_log.csv"
 METRICS_PATH = DATA_PROC / "oos_metrics.csv"
 
+SCORE_PATH = DATA_PROC / "scorecard.json"
+CHART_DIR = REPORT_DIR
