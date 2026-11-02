@@ -29,7 +29,7 @@ METRIC_COLS = ["n", "accuracy", "auc", "logloss", "hit_rate_traded",
                "sharpe", "max_dd_log", "total_log_ret", "exposure"]
 
 TEMPLATE = """<!doctype html>
-<html><head><meta charset="utf-8"><title>HSI report {{ live.feature_date }}</title>
+<html><head><meta charset="utf-8"><title>{{ label }} report{{ live.feature_date }}</title>
 <style>
 body{font-family:Arial,Helvetica,sans-serif;background:#f4f5f7;color:#222;margin:0}
 .wrap{max-width:860px;margin:0 auto;padding:20px}
@@ -47,7 +47,7 @@ ul{margin:4px 0 8px 18px;padding:0;font-size:13px}
 img{max-width:100%;height:auto}
 </style></head><body><div class="wrap">
 
-<h1>HSI next-day forecast</h1>
+<h1>{{ label }} next-day forecast</h1>
 <div class="muted">Features as of {{ live.feature_date }} (HK close) &middot;
 Target day {{ live.target_date }} &middot; Reference close {{ live.ref_hsi_close|num(2) }} &middot;
 Generated {{ live.generated_at }}</div>
@@ -205,7 +205,7 @@ def final_direction(ctx: dict) -> str:
 def render(ctx: dict, images: Dict[str, str]) -> str:
     env = Environment(autoescape=True)
     env.filters["num"], env.filters["pct"] = _num, _pct
-    return env.from_string(TEMPLATE).render(images=images, **ctx)
+    return env.from_string(TEMPLATE).render(images=images, label=config.TARGET_LABEL, **ctx)
 
 
 def _data_uri(path: str) -> str:
@@ -243,7 +243,7 @@ def build_report() -> dict:
         "html_email": html_email,
         "text": plain_text(ctx),
         "images": {cids[k]: imgs[k] for k in imgs},  # cid -> png path
-        "subject": (f"HSI forecast {lv['target_date']}: {final_direction(ctx)} "
+        "subject": (f"{config.TARGET_LABEL} forecast {lv['target_date']}: {final_direction(ctx)} "
                     f"(P(up) {_pct(lv['p_up_ensemble'])})"),
     }
 
