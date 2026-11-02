@@ -21,8 +21,9 @@ TARGET_TICKER = "^HSI"
 # ---- Secrets (set in .env locally, GitHub Secrets in CI) ----
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "465"))
+
+SMTP_HOST = os.getenv("SMTP_HOST") or "smtp.gmail.com"
+SMTP_PORT = int(os.getenv("SMTP_PORT") or "465")
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
 EMAIL_TO = os.getenv("EMAIL_TO", "")
@@ -122,7 +123,7 @@ LR = 1e-3
 WEIGHT_DECAY = 1e-3
 
 # ---- Part 4: LLM ----
-LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # placeholder: set to any chat model you have access to
+LLM_MODEL = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"  # placeholder: set to a model you have access to
 LLM_MAX_ADJ = 0.05      # max |adjusted_p_up - model p_up|
 LLM_PATH = DATA_PROC / "llm_review.json"
 TRACK_PATH = DATA_PROC / "prediction_log.csv"
