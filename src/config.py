@@ -165,3 +165,11 @@ MULTI_STATE.mkdir(parents=True, exist_ok=True)
 
 USE_STOCK_ID = True   # integer stock id as a feature; set False if it overfits
 
+MULTI_WF_MIN_DATES = 750    # first training window, in unique dates
+MULTI_WF_STEP = 63          # retrain every 63 dates
+MULTI_WF_MAX_DATES = 1500   # rolling window cap; None = expanding
+MULTI_OOS_PATH = MULTI_STATE / "oos_long.parquet"
+
+
+
+
