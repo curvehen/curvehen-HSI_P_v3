@@ -34,6 +34,8 @@ contradictions: list of up to 4 short strings
 risk_flags: list of up to 4 short strings
 summary: max 60 words, plain text."""
 
+SYSTEM = SYSTEM.replace("Hang Seng Index (HSI)", config.TARGET_LABEL)
+
 
 def _direction(p: float) -> str:
     if p >= 0.5 + NEUTRAL_BAND:
