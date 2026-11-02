@@ -131,3 +131,11 @@ METRICS_PATH = DATA_PROC / "oos_metrics.csv"
 
 SCORE_PATH = DATA_PROC / "scorecard.json"
 CHART_DIR = REPORT_DIR
+
+# ---- Part 5: persistent state (committed to the repo) ----
+STATE_DIR = ROOT / "state"
+STATE_DIR.mkdir(exist_ok=True)
+OOS_PATH = STATE_DIR / "oos_predictions.parquet"
+METRICS_PATH = STATE_DIR / "oos_metrics.csv"
+TRACK_PATH = STATE_DIR / "prediction_log.csv"
+SCORE_PATH = STATE_DIR / "scorecard.json"
