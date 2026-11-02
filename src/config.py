@@ -83,3 +83,24 @@ FRED_LAG_OBS = 1
 
 # Max calendar days a stale value may be carried forward during alignment.
 MAX_STALE_DAYS = 5
+
+# ---- Part 2: features ----
+# ADR -> (HK line name in panel, HK shares per 1 ADR). Ratios are UNVERIFIED: check before use.
+ADR_PAIRS = {
+    "baba": ("alibaba_hk", 8.0),
+    "tcehy": ("tencent", 1.0),
+    "hsbc_adr": ("hsbc_hk", 5.0),
+}
+FX_FALLBACK_HKD = 7.8
+# Assets on which candle patterns are detected (column prefix in panel)
+CANDLE_ASSETS = ["hsi", "hstech", "spx", "nasdaq", "nq_fut"]
+# Composite groups (mean of 1-day log returns)
+COMPOSITES = {
+    "us_index": ["spx", "nasdaq", "dow", "russell", "es_fut", "nq_fut"],
+    "cn_etf": ["fxi", "kweb", "mchi", "ashr", "ewh"],
+    "cn_adr": ["baba", "jd", "bidu", "pdd", "ntes", "tcom", "li", "xpev"],
+    "hk_bluechip": ["tencent", "hsbc_hk", "alibaba_hk", "meituan", "aia", "ccb", "xiaomi"],
+}
+MAX_MISSING_FRAC = 0.5
+WARMUP_ROWS = 200
+FEATURES_PATH = DATA_PROC / "features.parquet"
