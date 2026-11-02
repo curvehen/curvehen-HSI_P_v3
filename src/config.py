@@ -147,3 +147,18 @@ if TARGET_NAME != "hsi":
     HK_ASSETS["hsi"] = ("^HSI", True)   # HSI 變成 feature
 CANDLE_ASSETS = list(dict.fromkeys([TARGET_NAME] + CANDLE_ASSETS))
 
+# ---- B3: pooled multi-stock model ----
+# Tickers are UNVERIFIED. Any ticker that fails to download is skipped with a log warning.
+UNIVERSE = {
+    "tencent": "0700.HK", "hsbc_hk": "0005.HK", "alibaba_hk": "9988.HK",
+    "meituan": "3690.HK", "aia": "1299.HK", "ccb": "0939.HK",
+    "xiaomi": "1810.HK", "china_mobile": "0941.HK", "hkex": "0388.HK",
+    "icbc": "1398.HK", "ping_an": "2318.HK", "cnooc": "0883.HK",
+    "byd": "1211.HK", "jd_hk": "9618.HK", "baidu_hk": "9888.HK",
+}
+MIN_STOCK_ROWS = 500       # skip stocks with fewer labelled rows
+MIN_CROSS_SECTION = 5      # min stocks per date to define target_xs
+MULTI_DATA = ROOT / "data" / "processed" / "multi"
+MULTI_STATE = ROOT / "state" / "multi"
+MULTI_DATA.mkdir(parents=True, exist_ok=True)
+MULTI_STATE.mkdir(parents=True, exist_ok=True)
