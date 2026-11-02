@@ -18,10 +18,7 @@ START_DATE = "2012-01-01"
 
 TARGET_NAME = os.getenv("TARGET_NAME") or "hsi"
 TARGET_TICKER = os.getenv("TARGET_TICKER") or "^HSI"
-
-
-
-
+TARGET_LABEL = os.getenv("TARGET_LABEL") or TARGET_NAME.upper()
 
 # ---- Secrets (set in .env locally, GitHub Secrets in CI) ----
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
