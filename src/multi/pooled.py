@@ -16,7 +16,7 @@ from src.models.tabular import get_tabular_models
 from src.multi import features_long as fl
 
 log = logging.getLogger(__name__)
-LABEL = "target_xs_dir"
+LABEL = config.MULTI_LABEL
 
 
 def date_splits(dates: pd.DatetimeIndex, min_train: int, step: int,
