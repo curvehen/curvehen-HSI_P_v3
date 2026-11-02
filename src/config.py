@@ -162,3 +162,6 @@ MULTI_DATA = ROOT / "data" / "processed" / "multi"
 MULTI_STATE = ROOT / "state" / "multi"
 MULTI_DATA.mkdir(parents=True, exist_ok=True)
 MULTI_STATE.mkdir(parents=True, exist_ok=True)
+
+USE_STOCK_ID = True   # integer stock id as a feature; set False if it overfits
+
