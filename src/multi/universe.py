@@ -46,9 +46,12 @@ def _one(name: str, df: pd.DataFrame, cal: pd.DatetimeIndex,
 
     c = d["close"]
     d["target_ret"] = np.log(c.shift(-1) / c)   # next calendar row = next HSI trading date
+    o_next = d["open"].shift(-1).where(lambda s: s > 0)   # open of T'; NaN if suspended / invalid
+    d["target_oc_ret"] = np.log(c.shift(-1) / o_next)     # open(T') -> close(T'), tradable
     d["next_date"] = next_dates.values
     d["name"] = name
     return d.dropna(subset=["close"])
+
 
 
 def build_long_base(panel: Optional[pd.DataFrame] = None,
@@ -75,7 +78,7 @@ def build_long_base(panel: Optional[pd.DataFrame] = None,
     long = pd.concat(frames).sort_index()
     long.index.name = "date"
 
-    g = long.groupby(level=0)["target_ret"]
+    g    g = long.groupby(level=0)["target_ret"]
     n_cs = g.transform("count")
     med = g.transform("median")
     long["target_xs"] = (long["target_ret"] - med).where(n_cs >= config.MIN_CROSS_SECTION)
@@ -83,7 +86,15 @@ def build_long_base(panel: Optional[pd.DataFrame] = None,
     long["target_xs_dir"] = (long["target_xs"] > 0).astype(float).where(long["target_xs"].notna())
     long["is_live"] = (long.index == cal[-1]).astype(int)
 
+    # open-to-close targets (same construction, tradable entry at the T' open)
+    g2 = long.groupby(level=0)["target_oc_ret"]
+    n_cs2, med2 = g2.transform("count"), g2.transform("median")
+    long["target_oc_xs"] = (long["target_oc_ret"] - med2).where(n_cs2 >= config.MIN_CROSS_SECTION)
+    long["target_oc_dir"] = (long["target_oc_ret"] > 0).astype(float).where(long["target_oc_ret"].notna())
+    long["target_oc_xs_dir"] = (long["target_oc_xs"] > 0).astype(float).where(long["target_oc_xs"].notna())
+
     live = long[long["is_live"] == 1]
+
     log.info("Long base: %d rows | %d stocks | labelled %d | live rows %d | %s -> %s",
              len(long), long["name"].nunique(), int(long["target_xs"].notna().sum()),
              len(live), long.index.min().date(), long.index.max().date())
