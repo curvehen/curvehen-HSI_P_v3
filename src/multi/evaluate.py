@@ -16,6 +16,8 @@ from src import config
 
 log = logging.getLogger(__name__)
 ANN = 252
+FLAT = config.MULTI_TARGET == "oc"   # positions are closed every day
+LABEL = config.MULTI_LABEL
 
 
 def _wide(o: pd.DataFrame, col: str) -> pd.DataFrame:
@@ -37,8 +39,12 @@ def ls_weights(A: np.ndarray, k: int) -> np.ndarray:
 
 def _returns(W: np.ndarray, R: np.ndarray, cost_bps: float):
     gross = (W * R).sum(axis=1)
-    turn = np.abs(np.diff(W, axis=0, prepend=np.zeros((1, W.shape[1])))).sum(axis=1)
+    if FLAT:   # enter at open, exit at close: every weight is traded twice per day
+        turn = 2.0 * np.abs(W).sum(axis=1)
+    else:
+        turn = np.abs(np.diff(W, axis=0, prepend=np.zeros((1, W.shape[1])))).sum(axis=1)
     return gross, gross - turn * cost_bps / 1e4, turn
+
 
 
 def _sharpe(x: np.ndarray) -> float:
@@ -63,8 +69,8 @@ def daily_ic(P: pd.DataFrame, X: pd.DataFrame) -> pd.Series:
 
 def evaluate(oos: pd.DataFrame, k: int, cost_bps: float, sims: int, seed: int = 42):
     o = oos.rename_axis("date").reset_index()
-    R = _wide(o, "target_ret")
-    X = _wide(o, "target_xs")
+    R = _wide(o, config.MULTI_RET)
+    X = _wide(o, config.MULTI_XS)
     Rv = np.nan_to_num(R.values)
     cols = [c for c in o.columns if c.startswith("p_")] + ["ens_equal"]
 
@@ -79,14 +85,15 @@ def evaluate(oos: pd.DataFrame, k: int, cost_bps: float, sims: int, seed: int = 
         gross, net, turn = _returns(W, Rv, cost_bps)
         daily[c] = pd.Series(net, index=P.index)
 
-        d = o.dropna(subset=[c, "target_xs_dir"])
-        both = len(np.unique(d[c])) > 1 and d["target_xs_dir"].nunique() > 1
+        d = o.dropna(subset=[c, LABEL])
+        both = len(np.unique(d[c])) > 1 and d[LABEL].nunique() > 1
+
         sd = ic.std(ddof=1)
         rows.append({
             "model": c.replace("p_", ""),
             "n_rows": len(d), "n_dates": int(P.shape[0]),
-            "auc": float(roc_auc_score(d["target_xs_dir"], d[c])) if both else np.nan,
-            "acc": float(((d[c] > 0.5) == (d["target_xs_dir"] == 1)).mean()),
+            "auc": float(roc_auc_score(d[LABEL], d[c])) if both else np.nan,
+            "acc": float(((d[c] > 0.5) == (d[LABEL] == 1)).mean()),
             "ic_mean": float(ic.mean()), "ic_std": float(sd),
             "icir": float(ic.mean() / sd * np.sqrt(ANN)) if sd > 0 else np.nan,
             "ic_t": float(ic.mean() / sd * np.sqrt(len(ic))) if sd > 0 else np.nan,
