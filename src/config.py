@@ -117,3 +117,6 @@ BATCH_SIZE = 64
 PATIENCE = 6
 OOS_PATH = DATA_PROC / "oos_predictions.parquet"
 LIVE_PATH = DATA_PROC / "live_prediction.json"
+
+LR = 1e-3
+WEIGHT_DECAY = 1e-3
