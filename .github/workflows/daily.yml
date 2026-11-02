@@ -1,0 +1,90 @@
+name: daily-hsi
+
+on:
+  schedule:
+    # 00:30 UTC = 08:30 HKT, Mon-Fri. US cash close is 04:00-05:00 HKT, HK open is 09:30.
+    - cron: "30 0 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      backtest:
+        description: "Force a fresh walk-forward backtest (slow)"
+        type: boolean
+        default: false
+      no_email:
+        description: "Do not send the email"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-hsi
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Restore raw data cache
+        uses: actions/cache@v4
+        with:
+          path: data
+          key: data-${{ github.run_id }}
+          restore-keys: data-
+
+      - name: Run pipeline
+        env:
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.backtest }}" = "true" ]; then ARGS="$ARGS --backtest"; fi
+          if [ "${{ inputs.no_email }}" = "true" ]; then ARGS="$ARGS --no-email"; fi
+          python main.py $ARGS
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hsi-report
+          path: |
+            reports/*.html
+            reports/*.png
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Commit state
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state
+          if git diff --staged --quiet; then
+            echo "No state changes."
+          else
+            git commit -m "chore: update state $(date -u +%F) [skip ci]"
+            git pull --rebase
+            git push
+          fi
