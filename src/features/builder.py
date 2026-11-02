@@ -125,7 +125,7 @@ def build_features(panel: pd.DataFrame = None) -> pd.DataFrame:
 
     cross = _cross_asset(panel)
     parts = [
-        technical.hsi_technical(panel),
+        technical.hsi_technical(panel, config.TARGET_NAME)
         technical.calendar_features(panel.index, panel["next_date"]),
         candles.add_candle_features(panel, config.CANDLE_ASSETS),
         cross,
