@@ -62,7 +62,7 @@ def build_context(live: dict, feats: pd.DataFrame) -> str:
     history = [{"date": str(d.date()), "close": _v(c)} for d, c in closes.items()]
 
     ctx = {
-        "task": "Review the quantitative model's call for the next HK trading day.",
+        "task": f"Review the quantitative model's call for {config.TARGET_LABEL} on the next HK trading day.",
         "units": "*_ret1 / *_ret5 are log returns (0.01 = 1%); *_d1 are level changes.",
         "model_output": {
             k: live.get(k) for k in (
