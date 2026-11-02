@@ -190,7 +190,97 @@ def _direction(p: float) -> str:
         return "DOWN"
     return "NEUTRAL"
 
-
 def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
              names: Optional[List[str]] = None,
-             oos: Optional[pd.DataFrame]
+             oos: Optional[pd.DataFrame] = None) -> dict:
+    """Retrain every model on the latest window and predict the live row."""
+    if len(X) != n_lab + 1:
+        raise RuntimeError("No unlabelled live row: the last panel row must have a NaN target.")
+    tr0 = 0 if config.WF_MAX_TRAIN is None else max(0, n_lab - config.WF_MAX_TRAIN)
+
+    preds: Dict[str, float] = {}
+    lgbm = None
+    for m in _all_models(names):
+        try:
+            m.fit(X.iloc[tr0:n_lab], y[tr0:n_lab])
+            preds[m.name] = float(_predict(m, X, n_lab, n_lab + 1)[0])
+            if isinstance(m, LGBMModel):
+                lgbm = m
+        except Exception as exc:
+            log.warning("Model %s failed on live fit: %s", m.name, exc)
+    if not preds:
+        raise RuntimeError("All models failed on the live fit.")
+
+    ok = list(preds)
+    w = _live_weights(oos, ok, X.index[n_lab - 1]).reindex(ok).fillna(0.0)
+    w = w / w.sum() if w.sum() > 0 else pd.Series(1.0 / len(ok), index=ok)
+    p_ens = float(sum(w[k] * preds[k] for k in ok))
+    p_eq = float(np.mean(list(preds.values())))
+    side = p_ens > 0.5
+    agreement = float(np.mean([(p > 0.5) == side for p in preds.values()]))
+
+    top = {}
+    if lgbm is not None:
+        for f in lgbm.importance().head(10).index:
+            top[f] = _f(X.iloc[-1][f])
+
+    result = {
+        "generated_at": pd.Timestamp.now(tz="Asia/Hong_Kong").isoformat(timespec="seconds"),
+        "feature_date": str(X.index[-1].date()),
+        "target_date": str(pd.Timestamp(feats["next_date"].iloc[-1]).date()),
+        "ref_hsi_close": _f(feats["ref_hsi_close"].iloc[-1]),
+        "direction": _direction(p_ens),
+        "p_up_ensemble": _f(p_ens),
+        "p_up_equal": _f(p_eq),
+        "model_probs": {k: _f(v) for k, v in preds.items()},
+        "weights": {k: _f(w[k]) for k in ok},
+        "model_agreement": _f(agreement),
+        "n_train_rows": int(n_lab - tr0),
+        "live_row_nan": int(X.iloc[-1].isna().sum()),
+        "n_features": int(X.shape[1]),
+        "top_features_live": top,
+    }
+    config.LIVE_PATH.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+    log.info("Live: %s | P(up)=%.3f | %s -> %s", result["direction"], p_ens,
+             result["feature_date"], result["target_date"])
+    return result
+
+
+# ------------------------------------------------------------------ CLI
+def main() -> None:
+    ap = argparse.ArgumentParser(description="HSI next-day model pipeline")
+    ap.add_argument("--mode", choices=["backtest", "live", "all"], default="all")
+    ap.add_argument("--models", nargs="*", help="subset: logit lgbm xgb lstm gru transformer")
+    ap.add_argument("--skip-data", action="store_true",
+                    help="reuse cached features.parquet instead of rebuilding")
+    args = ap.parse_args()
+
+    if args.skip_data and config.FEATURES_PATH.exists():
+        feats = builder.load_features()
+    else:
+        from src.data import build_dataset
+        feats = builder.build_features(build_dataset.build_panel(refresh=True))
+    X, y, n_lab = prepare(feats)
+
+    oos = None
+    if args.mode in ("backtest", "all"):
+        oos = run_backtest(X, y, n_lab, feats, args.models)
+        oos.to_parquet(config.OOS_PATH)
+        metrics = evaluate(oos)
+        metrics.to_csv(METRICS_PATH)
+        print(metrics.round(4).to_string())
+
+    if args.mode in ("live", "all"):
+        if oos is None and config.OOS_PATH.exists():
+            oos = pd.read_parquet(config.OOS_PATH)
+        res = run_live(X, y, n_lab, feats, args.models, oos)
+        print(json.dumps(res, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    main()
+
