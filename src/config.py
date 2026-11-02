@@ -104,3 +104,16 @@ COMPOSITES = {
 MAX_MISSING_FRAC = 0.5
 WARMUP_ROWS = 200
 FEATURES_PATH = DATA_PROC / "features.parquet"
+
+# ---- Part 3: models ----
+SEED = 42
+SEQ_LEN = 20            # lookback window for LSTM / GRU / Transformer
+WF_MIN_TRAIN = 750      # first training window (rows)
+WF_STEP = 63            # retrain every 63 trading days in the backtest
+WF_MAX_TRAIN = 2000     # rolling window cap (rows); None = expanding
+VAL_FRAC = 0.15         # last 15% of each training window = early-stopping set
+EPOCHS = 40
+BATCH_SIZE = 64
+PATIENCE = 6
+OOS_PATH = DATA_PROC / "oos_predictions.parquet"
+LIVE_PATH = DATA_PROC / "live_prediction.json"
