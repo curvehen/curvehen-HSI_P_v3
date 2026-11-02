@@ -170,6 +170,12 @@ MULTI_WF_STEP = 63          # retrain every 63 dates
 MULTI_WF_MAX_DATES = 1500   # rolling window cap; None = expanding
 MULTI_OOS_PATH = MULTI_STATE / "oos_long.parquet"
 
+MULTI_METRICS_PATH = MULTI_STATE / "oos_metrics_long.csv"
+MULTI_YEAR_PATH = MULTI_STATE / "oos_by_year_long.csv"
+MULTI_LS_PATH = MULTI_STATE / "ls_returns.parquet"
+MULTI_TOPK = 3              # stocks per leg
+COST_BPS_STOCK = 15.0       # one-way cost per unit of weight traded (bps). PLACEHOLDER: replace with your
+                            # real commission + stamp duty + slippage. Short borrow cost is not modelled.
 
 
 
