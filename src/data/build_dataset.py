@@ -76,8 +76,13 @@ def build_panel(refresh: bool = True) -> pd.DataFrame:
     hsi_raw = loaders.load_yf(config.TARGET_TICKER, refresh=refresh)
     if hsi_raw.empty:
         raise RuntimeError("Cannot load HSI data - aborting.")
+
+    tgt = config.TARGET_NAME
     hsi_raw = _drop_partial_today(hsi_raw)
-    hsi = _prep(hsi_raw, config.TARGET_NAME, True).dropna(subset=["hsi_close"])
+    if tgt != "hsi" and "volume" in hsi_raw.columns:
+        hsi_raw = hsi_raw[hsi_raw["volume"] > 0]   # drop suspended / zero-volume days
+    hsi = _prep(hsi_raw, tgt, True).dropna(subset=[f"{tgt}_close"])
+
     hk_idx = hsi.index
 
     # Next HK trading date (T'); last row falls back to the next business day.
@@ -119,7 +124,7 @@ def build_panel(refresh: bool = True) -> pd.DataFrame:
     panel = panel.loc[:, ~panel.columns.duplicated()]
 
     # ---- Target (last row is NaN = live inference row) ----
-    close = panel["hsi_close"]
+    close = panel[f"{config.TARGET_NAME}_close"]
     panel["target_ret"] = np.log(close.shift(-1) / close)
     panel["target_dir"] = (panel["target_ret"] > 0).astype(float)
     panel.loc[panel["target_ret"].isna(), "target_dir"] = np.nan
