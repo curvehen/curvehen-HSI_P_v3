@@ -120,3 +120,11 @@ LIVE_PATH = DATA_PROC / "live_prediction.json"
 
 LR = 1e-3
 WEIGHT_DECAY = 1e-3
+
+# ---- Part 4: LLM ----
+LLM_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # placeholder: set to any chat model you have access to
+LLM_MAX_ADJ = 0.05      # max |adjusted_p_up - model p_up|
+LLM_PATH = DATA_PROC / "llm_review.json"
+TRACK_PATH = DATA_PROC / "prediction_log.csv"
+METRICS_PATH = DATA_PROC / "oos_metrics.csv"
+
