@@ -1,0 +1,8 @@
+data/
+reports/*.html
+reports/*.png
+.env
+__pycache__/
+*.pyc
+.venv/
+models_store/
