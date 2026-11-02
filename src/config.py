@@ -8,15 +8,20 @@ load_dotenv()
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_RAW = ROOT / "data" / "raw"
-DATA_PROC = ROOT / "data" / "processed"
-REPORT_DIR = ROOT / "reports"
+DATA_PROC = ROOT / "data" / "processed" / TARGET_NAME
+REPORT_DIR = ROOT / "reports" / TARGET_NAME
 MODEL_DIR = ROOT / "models_store"
 for _p in (DATA_RAW, DATA_PROC, REPORT_DIR, MODEL_DIR):
     _p.mkdir(parents=True, exist_ok=True)
 
 START_DATE = "2012-01-01"
-TARGET_NAME = "hsi"
-TARGET_TICKER = "^HSI"
+
+TARGET_NAME = os.getenv("TARGET_NAME") or "hsi"
+TARGET_TICKER = os.getenv("TARGET_TICKER") or "^HSI"
+
+
+
+
 
 # ---- Secrets (set in .env locally, GitHub Secrets in CI) ----
 FRED_API_KEY = os.getenv("FRED_API_KEY", "")
@@ -133,9 +138,15 @@ SCORE_PATH = DATA_PROC / "scorecard.json"
 CHART_DIR = REPORT_DIR
 
 # ---- Part 5: persistent state (committed to the repo) ----
-STATE_DIR = ROOT / "state"
-STATE_DIR.mkdir(exist_ok=True)
+STATE_DIR = ROOT / "state" / TARGET_NAME
+STATE_DIR.mkdir(parents=True, exist_ok=True)
 OOS_PATH = STATE_DIR / "oos_predictions.parquet"
 METRICS_PATH = STATE_DIR / "oos_metrics.csv"
 TRACK_PATH = STATE_DIR / "prediction_log.csv"
 SCORE_PATH = STATE_DIR / "scorecard.json"
+
+HK_ASSETS.pop(TARGET_NAME, None)
+if TARGET_NAME != "hsi":
+    HK_ASSETS["hsi"] = ("^HSI", True)   # HSI 變成 feature
+CANDLE_ASSETS = list(dict.fromkeys([TARGET_NAME] + CANDLE_ASSETS))
+
