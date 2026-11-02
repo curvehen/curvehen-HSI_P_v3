@@ -152,7 +152,7 @@ def build_features(panel: pd.DataFrame = None) -> pd.DataFrame:
     feats["target_ret"] = panel.loc[feats.index, "target_ret"]
     feats["target_dir"] = panel.loc[feats.index, "target_dir"]
     feats["next_date"] = panel.loc[feats.index, "next_date"]
-    feats["ref_hsi_close"] = panel.loc[feats.index, "hsi_close"]
+    feats["ref_hsi_close"] = panel.loc[feats.index, f"{config.TARGET_NAME}_close"]
 
     n_feat = len(feature_columns(feats))
     last_nan = int(feats[feature_columns(feats)].iloc[-1].isna().sum())
