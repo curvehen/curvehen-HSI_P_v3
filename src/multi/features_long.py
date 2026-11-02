@@ -21,7 +21,9 @@ from src.multi import universe
 log = logging.getLogger(__name__)
 
 FEATURES_LONG_PATH = config.MULTI_DATA / "features_long.parquet"
-TARGETS = ["target_ret", "target_xs", "target_dir", "target_xs_dir"]
+TARGETS = ["target_ret", "target_xs", "target_dir", "target_xs_dir",
+           "target_oc_ret", "target_oc_xs", "target_oc_dir", "target_oc_xs_dir"]
+
 META = {"name", "next_date", "is_live", "ref_close", "date"}
 CS_COLS = [
     "s_ret1_lag", "s_ret_5d", "s_ret_20d", "s_rv20", "s_vol_z20", "s_rsi14",
