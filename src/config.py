@@ -177,5 +177,23 @@ MULTI_TOPK = 3              # stocks per leg
 COST_BPS_STOCK = 15.0       # one-way cost per unit of weight traded (bps). PLACEHOLDER: replace with your
                             # real commission + stamp duty + slippage. Short borrow cost is not modelled.
 
+MULTI_TARGET = os.getenv("MULTI_TARGET") or "oc"   # "oc" = open-to-close (tradable), "cc" = close-to-close
+_COLS = {
+    "cc": ("target_ret", "target_xs", "target_xs_dir"),
+    "oc": ("target_oc_ret", "target_oc_xs", "target_oc_xs_dir"),
+}
+MULTI_RET, MULTI_XS, MULTI_LABEL = _COLS[MULTI_TARGET]
+
+# per-target output files, so cc and oc results do not overwrite each other
+MULTI_OOS_PATH = MULTI_STATE / f"oos_long_{MULTI_TARGET}.parquet"
+MULTI_METRICS_PATH = MULTI_STATE / f"oos_metrics_long_{MULTI_TARGET}.csv"
+MULTI_YEAR_PATH = MULTI_STATE / f"oos_by_year_long_{MULTI_TARGET}.csv"
+MULTI_LS_PATH = MULTI_STATE / f"ls_returns_{MULTI_TARGET}.parquet"
+
+
+
+
+
+
 
 
