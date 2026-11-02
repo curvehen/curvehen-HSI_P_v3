@@ -19,8 +19,10 @@ KEY_FEATURES = [
     # flows / ADR premium
     "sb_net", "sb_z20", "adr_baba_prem", "adr_tcehy_prem",
     # HSI state
-    "hsi_ret1_lag", "hsi_ret_5d", "hsi_rsi14", "hsi_rv20", "hsi_dist_sma20",
-    "hsi_dist_sma200", "hsi_drawdown60", "hsi_bb_pctb", "hsi_streak",
+    f"{_T}_ret1_lag", f"{_T}_ret_5d", f"{_T}_rsi14", f"{_T}_rv20",
+    f"{_T}_dist_sma20", f"{_T}_dist_sma200", f"{_T}_drawdown60",
+    f"{_T}_bb_pctb", f"{_T}_streak",
+    *([] if _T == "hsi" else ["hsi_ret1", "hsi_ret5"]),  # index as context
     # calendar
     "cal_dow_next", "cal_gap_days", "cal_settle_next", "cal_month_end_next",
 ]
@@ -50,13 +52,14 @@ def build_context(live: dict, feats: pd.DataFrame) -> str:
     last = feats.iloc[-1]
     snapshot = {k: _v(last[k]) for k in KEY_FEATURES if k in feats.columns}
 
-    pats = [c for c in candles.pattern_columns("hsi") if c in feats.columns]
+    pats = [c for c in candles.pattern_columns(_T) if c in feats.columns]
     patterns = {c: int(last[c]) for c in pats if pd.notna(last[c]) and last[c] != 0}
-    if "hsi_cdl_net_score" in feats.columns:
-        patterns["hsi_cdl_net_score"] = _v(last["hsi_cdl_net_score"])
+    net = f"{_T}_cdl_net_score"
+    if net in feats.columns:
+        patterns[net] = _v(last[net])
 
-    closes = feats["ref_hsi_close"].tail(6)
-    history = [{"date": str(d.date()), "hsi_close": _v(c)} for d, c in closes.items()]
+    closes = feats["ref_hsi_close"].tail(6)  # holds the target's close
+    history = [{"date": str(d.date()), "close": _v(c)} for d, c in closes.items()]
 
     ctx = {
         "task": "Review the quantitative model's call for the next HK trading day.",
@@ -67,9 +70,9 @@ def build_context(live: dict, feats: pd.DataFrame) -> str:
                 "model_probs", "weights", "model_agreement", "live_row_nan",
             )
         },
-        "hsi_recent_closes": history,
+        "target_recent_closes": history,
         "latest_feature_snapshot": snapshot,
-        "hsi_candle_patterns_today": patterns,
+        "target_candle_patterns_today": patterns,
         "top_model_features_live": live.get("top_features_live", {}),
         "out_of_sample_walkforward_stats": _oos_summary(),
     }
