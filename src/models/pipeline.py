@@ -26,7 +26,7 @@ WEIGHT_WINDOW = 126      # trailing OOS rows used to score each model
 WEIGHT_TEMP = 20.0       # higher = weights concentrate on recent winners
 MIN_HIST = 20
 NEUTRAL_BAND = 0.02      # |p - 0.5| below this => NEUTRAL
-METRICS_PATH = config.DATA_PROC / "oos_metrics.csv"
+METRICS_PATH = config.METRICS_PATH
 
 
 def _all_models(names: Optional[List[str]] = None) -> list:
