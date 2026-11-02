@@ -190,6 +190,8 @@ MULTI_METRICS_PATH = MULTI_STATE / f"oos_metrics_long_{MULTI_TARGET}.csv"
 MULTI_YEAR_PATH = MULTI_STATE / f"oos_by_year_long_{MULTI_TARGET}.csv"
 MULTI_LS_PATH = MULTI_STATE / f"ls_returns_{MULTI_TARGET}.parquet"
 
+MULTI_EPOCHS = 20     # fewer than the HSI model: the pooled table has many more rows
+MULTI_BATCH = 256
 
 
 
