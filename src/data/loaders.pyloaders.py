@@ -117,3 +117,8 @@ def load_southbound(refresh: bool = True) -> pd.Series:
         s.to_frame("value").to_parquet(path)
         return s
     except Exception as exc:
+        log.warning("Southbound (akshare) failed: %s", exc)
+        if path.exists():
+            return pd.read_parquet(path)["value"]
+        return pd.Series(dtype=float)
+
