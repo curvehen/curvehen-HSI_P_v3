@@ -213,6 +213,13 @@ OOS_TUNED_PATH = STATE_DIR / "oos_predictions_tuned.parquet"
 METRICS_TUNED_PATH = STATE_DIR / "oos_metrics_tuned.csv"
 TUNING_LOG_PATH = STATE_DIR / "tuning_log.json"
 
+def tuned_path(p: Path) -> Path:
+    """oos_long_oc.parquet -> oos_long_oc_tuned.parquet"""
+    return p.with_name(p.stem + "_tuned" + p.suffix)
+
+
+MULTI_TUNED_PARAMS_PATH = MULTI_STATE / f"tuned_params_long_{MULTI_TARGET}.json"
+MULTI_TUNING_LOG_PATH = MULTI_STATE / f"tuning_log_long_{MULTI_TARGET}.json"
 
 
 
