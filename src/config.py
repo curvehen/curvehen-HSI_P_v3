@@ -209,6 +209,9 @@ TUNE_METRIC = "logloss"    # "logloss" (recommended) or "auc"
 TUNE_MODELS = ("lgbm", "xgb")
 TUNED_PARAMS_PATH = STATE_DIR / "tuned_params.json"
 
+OOS_TUNED_PATH = STATE_DIR / "oos_predictions_tuned.parquet"
+METRICS_TUNED_PATH = STATE_DIR / "oos_metrics_tuned.csv"
+TUNING_LOG_PATH = STATE_DIR / "tuning_log.json"
 
 
 
