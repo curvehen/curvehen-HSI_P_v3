@@ -139,22 +139,26 @@ def main() -> None:
     ap.add_argument("--k", type=int, default=config.MULTI_TOPK)
     ap.add_argument("--cost-bps", type=float, default=config.COST_BPS_STOCK)
     ap.add_argument("--sims", type=int, default=100, help="random baseline draws; 0 = skip")
+    ap.add_argument("--tuned", action="store_true", help="evaluate the *_tuned OOS file")
     args = ap.parse_args()
 
-    if not config.MULTI_OOS_PATH.exists():
-        raise SystemExit("Run `python -m src.multi.pooled` first.")
-    oos = pd.read_parquet(config.MULTI_OOS_PATH)
+    sfx = config.tuned_path
+    oos_p = sfx(config.MULTI_OOS_PATH) if args.tuned else config.MULTI_OOS_PATH
+    if not oos_p.exists():
+        raise SystemExit(f"Missing {oos_p}: run `python -m src.multi.pooled` first.")
+    oos = pd.read_parquet(oos_p)
     metrics, daily, ics = evaluate(oos, args.k, args.cost_bps, args.sims)
 
-    metrics.to_csv(config.MULTI_METRICS_PATH)
-    daily.to_parquet(config.MULTI_LS_PATH)
+    metrics.to_csv(sfx(config.MULTI_METRICS_PATH) if args.tuned else config.MULTI_METRICS_PATH)
+    daily.to_parquet(sfx(config.MULTI_LS_PATH) if args.tuned else config.MULTI_LS_PATH)
     yr = by_year(daily, ics)
-    yr.to_csv(config.MULTI_YEAR_PATH)
+    yr.to_csv(sfx(config.MULTI_YEAR_PATH) if args.tuned else config.MULTI_YEAR_PATH)
 
     pd.set_option("display.width", 200)
     print(metrics.round(4).to_string())
     print("\nBy year (ens_equal):")
     print(yr.round(4).to_string())
+
 
 
 if __name__ == "__main__":
