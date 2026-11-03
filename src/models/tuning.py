@@ -61,15 +61,23 @@ def _space_xgb(t: optuna.Trial) -> dict:
 
 SPACES = {"lgbm": _space_lgbm, "xgb": _space_xgb}
 
+def _snap(pos: int, dates) -> int:
+    """Move a row cut back to the first row of its date (dates must be sorted)."""
+    if dates is None or pos <= 0 or pos >= len(dates):
+        return pos
+    return int(np.searchsorted(dates, dates[pos], side="left"))
 
-def inner_folds(n: int) -> list:
-    cuts = [int(n * c) for c in INNER_CUTS]
+
+def inner_folds(n: int, dates=None) -> list:
+    cuts = [_snap(int(n * c), dates) for c in INNER_CUTS]
     return [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
 
 
+
 def _fit_score(name: str, params: dict, X: pd.DataFrame, y: np.ndarray,
-               s: int, e: int, seed: int) -> float:
-    c = int(s * (1 - ES_FRAC))
+               s: int, e: int, seed: int, dates=None) -> float:
+    c = _snap(int(s * (1 - ES_FRAC)), dates)
+
     Xtr, ytr, Xes, yes = X.iloc[:c], y[:c], X.iloc[c:s], y[c:s]
     Xte, yte = X.iloc[s:e], y[s:e]
     if name == "lgbm":
@@ -90,19 +98,23 @@ def _fit_score(name: str, params: dict, X: pd.DataFrame, y: np.ndarray,
 
 def tune(name: str, X: pd.DataFrame, y: np.ndarray,
          n_trials: Optional[int] = None, timeout: Optional[int] = None,
-         seed: int = config.SEED) -> Tuple[dict, dict]:
-    """Return (param_overrides, info). Empty overrides = keep defaults."""
+         seed: int = config.SEED, dates=None) -> Tuple[dict, dict]:
+    """Return (param_overrides, info). Empty overrides = keep defaults.
+    dates: sorted datetime64 array aligned with X rows (pooled tables only)."""
     if name not in SPACES:
         return {}, {"note": f"{name} is not tunable"}
     if len(X) < MIN_ROWS:
         return {}, {"note": f"only {len(X)} rows (< {MIN_ROWS}): defaults kept"}
     n_trials = n_trials or config.TUNE_TRIALS
     timeout = timeout or config.TUNE_TIMEOUT
-    folds = inner_folds(len(X))
+    folds = [f for f in inner_folds(len(X), dates) if f[0] > 0 and f[1] > f[0]]
+    if not folds:
+        return {}, {"note": "no valid inner folds: defaults kept"}
 
     def objective(trial: optuna.Trial) -> float:
         params = SPACES[name](trial)
-        return float(np.mean([_fit_score(name, params, X, y, s, e, seed) for s, e in folds]))
+        return float(np.mean([_fit_score(name, params, X, y, s, e, seed, dates)
+                              for s, e in folds]))
 
     study = optuna.create_study(direction="minimize",
                                 sampler=optuna.samplers.TPESampler(seed=seed))
@@ -126,3 +138,4 @@ def tune(name: str, X: pd.DataFrame, y: np.ndarray,
     log.info("Tuned %s: default %s -> best %.5f (%d trials)", name,
              info["default_score"], best.value, len(done))
     return params, info
+
