@@ -201,6 +201,13 @@ MULTI_SETTLED_PATH = MULTI_STATE / f"ranking_settled_{MULTI_TARGET}.csv"
 MULTI_DAILY_PATH = MULTI_STATE / f"forward_daily_{MULTI_TARGET}.csv"
 MULTI_SCORE_PATH = MULTI_STATE / f"forward_scorecard_{MULTI_TARGET}.json"
 
+# ---- Hyperparameter tuning ----
+TUNE_TRIALS = 30           # trials per study
+TUNE_TIMEOUT = 120         # seconds per study (hard cap)
+TUNE_EVERY_FOLDS = 4       # re-tune every N walk-forward folds, reuse params in between
+TUNE_METRIC = "logloss"    # "logloss" (recommended) or "auc"
+TUNE_MODELS = ("lgbm", "xgb")
+TUNED_PARAMS_PATH = STATE_DIR / "tuned_params.json"
 
 
 
