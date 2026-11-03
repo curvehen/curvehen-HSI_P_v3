@@ -221,5 +221,12 @@ def tuned_path(p: Path) -> Path:
 MULTI_TUNED_PARAMS_PATH = MULTI_STATE / f"tuned_params_long_{MULTI_TARGET}.json"
 MULTI_TUNING_LOG_PATH = MULTI_STATE / f"tuning_log_long_{MULTI_TARGET}.json"
 
+# ---- LLM provider switch ----
+LLM_PROVIDER = (os.getenv("LLM_PROVIDER") or "openai").lower()   # "openai" or "deepseek"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro"
+DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com"
+DEEPSEEK_THINKING = (os.getenv("DEEPSEEK_THINKING") or "1") == "1"
+LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT") or "180")   # thinking mode is slower
 
 
