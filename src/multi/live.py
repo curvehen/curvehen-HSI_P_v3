@@ -12,6 +12,11 @@ from src.models.common import Preprocessor
 from src.models.tabular import get_tabular_models
 from src.multi import features_long as fl
 from src.multi.pooled import LABEL
+from src.models import tuning
+
+
+
+
 
 log = logging.getLogger(__name__)
 HORIZON = {
@@ -27,12 +32,32 @@ def _train_mask(idx: pd.DatetimeIndex, has: np.ndarray) -> np.ndarray:
     return np.asarray(idx >= dates[0]) & has
 
 
+def _tuned_params(df: pd.DataFrame, fc: List[str], trm: np.ndarray,
+                  names: Optional[List[str]], tune: bool) -> dict:
+    """--tune: re-tune on the latest window and save. Else reuse the saved file."""
+    if tune:
+        X, y = df.loc[trm, fc].astype(float), df.loc[trm, LABEL].values
+        dts = df.index[trm].values
+        out = {}
+        for n in config.TUNE_MODELS:
+            if names and n not in names:
+                continue
+            p, _ = tuning.tune(n, X, y, dates=dts)
+            if p:
+                out[n] = p
+        config.MULTI_TUNED_PARAMS_PATH.write_text(json.dumps(out, indent=2))
+        return out
+    if config.MULTI_TUNED_PARAMS_PATH.exists():
+        return json.loads(config.MULTI_TUNED_PARAMS_PATH.read_text())
+    return {}
+
+
 def _tabular(df: pd.DataFrame, fc: List[str], trm: np.ndarray, live_m: np.ndarray,
-             names: Optional[List[str]]) -> Dict[str, np.ndarray]:
+             names: Optional[List[str]], tuned: Optional[dict] = None) -> Dict[str, np.ndarray]:
     Xtr, ytr = df.loc[trm, fc].astype(float), df.loc[trm, LABEL].values
     Xlv = df.loc[live_m, fc].astype(float)
     out = {}
-    for m in get_tabular_models():
+    for m in get_tabular_models(tuned):
         if names and m.name not in names:
             continue
         try:
@@ -64,7 +89,8 @@ def _gru(df: pd.DataFrame, fc: List[str], seed: int) -> pd.Series:
 
 
 def build_ranking(df: pd.DataFrame, names: Optional[List[str]], use_gru: bool,
-                  k: int, seed: int):
+                  k: int, seed: int, tune: bool = False):
+
     df = df.sort_index(kind="stable")
     fc = fl.long_feature_columns(df)
     live_m = (df["is_live"] == 1).values
@@ -75,8 +101,10 @@ def build_ranking(df: pd.DataFrame, names: Optional[List[str]], use_gru: bool,
     warns: List[str] = []
 
     P = pd.DataFrame(index=live["name"].values)
-    for name, p in _tabular(df, fc, trm, live_m, names).items():
+    tuned = _tuned_params(df, fc, trm, names, tune)
+    for name, p in _tabular(df, fc, trm, live_m, names, tuned).items():
         P[name] = p
+
     if use_gru and (not names or "gru" in names):
         try:
             P["gru"] = _gru(df, fc, seed).reindex(P.index).values
@@ -126,6 +154,7 @@ def build_ranking(df: pd.DataFrame, names: Optional[List[str]], use_gru: bool,
         "target_type": config.MULTI_TARGET,
         "horizon": HORIZON[config.MULTI_TARGET],
         "models": list(P.columns),
+        "tuned_models": sorted(tuned),
         "top_k": k,
         "n_stocks": n,
         "n_train_rows": int(trm.sum()),
@@ -162,10 +191,13 @@ def main() -> None:
     ap.add_argument("--cached", action="store_true",
                     help="reuse saved long features (may be stale)")
     ap.add_argument("--seed", type=int, default=config.SEED)
+    ap.add_argument("--tune", action="store_true",
+                    help="re-tune LightGBM/XGBoost on the latest window")
     a = ap.parse_args()
 
     df = fl.build_long_features(refresh=True, cached=a.cached)
-    r, meta = build_ranking(df, a.models, not a.no_gru, a.k, a.seed)
+    r, meta = build_ranking(df, a.models, not a.no_gru, a.k, a.seed, tune=a.tune)
+
     save(r, meta)
 
     pd.set_option("display.width", 200)
