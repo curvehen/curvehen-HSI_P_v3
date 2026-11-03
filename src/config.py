@@ -197,6 +197,9 @@ MULTI_LIVE_JSON = MULTI_STATE / f"live_ranking_{MULTI_TARGET}.json"
 MULTI_LIVE_CSV = MULTI_STATE / f"live_ranking_{MULTI_TARGET}.csv"
 MULTI_RANK_LOG = MULTI_STATE / f"ranking_log_{MULTI_TARGET}.csv"
 
+MULTI_SETTLED_PATH = MULTI_STATE / f"ranking_settled_{MULTI_TARGET}.csv"
+MULTI_DAILY_PATH = MULTI_STATE / f"forward_daily_{MULTI_TARGET}.csv"
+MULTI_SCORE_PATH = MULTI_STATE / f"forward_scorecard_{MULTI_TARGET}.json"
 
 
 
