@@ -29,13 +29,15 @@ class LogitModel:
 class LGBMModel:
     name, kind = "lgbm", "tabular"
 
-    def __init__(self, seed: int = config.SEED):
+    def __init__(self, seed: int = config.SEED, overrides: dict = None):
         self.params = dict(
             n_estimators=400, learning_rate=0.03, num_leaves=15, max_depth=4,
             min_child_samples=40, subsample=0.8, subsample_freq=1,
             colsample_bytree=0.6, reg_lambda=5.0, random_state=seed,
             verbose=-1, n_jobs=-1,
         )
+        self.params.update(overrides or {})
+
 
     def fit(self, X: pd.DataFrame, y: np.ndarray) -> "LGBMModel":
         c = _cut(len(X))
@@ -58,13 +60,14 @@ class LGBMModel:
 class XGBModel:
     name, kind = "xgb", "tabular"
 
-    def __init__(self, seed: int = config.SEED):
+    def __init__(self, seed: int = config.SEED, overrides: dict = None):
         self.params = dict(
             n_estimators=500, learning_rate=0.03, max_depth=3, min_child_weight=5,
             subsample=0.8, colsample_bytree=0.6, reg_lambda=5.0,
             tree_method="hist", eval_metric="logloss",
             early_stopping_rounds=30, random_state=seed, n_jobs=-1,
         )
+        self.params.update(overrides or {})
 
     def fit(self, X: pd.DataFrame, y: np.ndarray) -> "XGBModel":
         c = _cut(len(X))
@@ -78,5 +81,8 @@ class XGBModel:
         return self.m.predict_proba(X)[:, 1]
 
 
-def get_tabular_models() -> list:
-    return [LogitModel(), LGBMModel(), XGBModel()]
+def get_tabular_models(tuned: dict = None) -> list:
+    """tuned: {"lgbm": {...}, "xgb": {...}} parameter overrides (optional)."""
+    tuned = tuned or {}
+    return [LogitModel(), LGBMModel(overrides=tuned.get("lgbm")),
+            XGBModel(overrides=tuned.get("xgb"))]
