@@ -56,7 +56,7 @@ def _result(live: dict, verdict: str, adj: float, raw: dict, note: str = "") -> 
     final = _direction(adj)
     return {
         "reviewed_at": pd.Timestamp.now(tz="Asia/Hong_Kong").isoformat(timespec="seconds"),
-        "model": config.LLM_MODEL,
+        "model": _provider()[1],
         "verdict": verdict,
         "model_p_up": round(p, 4),
         "adjusted_p_up": round(adj, 4),
@@ -85,25 +85,55 @@ def _sanitize(raw: dict, live: dict) -> dict:
     return _result(live, verdict, adj, raw)
 
 
-def _call(client, messages: list) -> dict:
-    kw = dict(model=config.LLM_MODEL, messages=messages,
-              response_format={"type": "json_object"}, timeout=90)
+def _provider() -> tuple:
+    """(api_key, model, base_url or None, extra kwargs)."""
+    if config.LLM_PROVIDER == "deepseek":
+        extra = {"extra_body": {"thinking": {"type": "enabled" if config.DEEPSEEK_THINKING else "disabled"}}}
+        if config.DEEPSEEK_THINKING:
+            extra["reasoning_effort"] = "high"
+        return config.DEEPSEEK_API_KEY, config.DEEPSEEK_MODEL, config.DEEPSEEK_BASE_URL, extra
+    return config.OPENAI_API_KEY, config.LLM_MODEL, None, {}
+
+
+def _parse_json(text: str) -> dict:
+    t = (text or "").strip()
+    if t.startswith("```"):
+        t = t.strip("`")
+        t = t[4:] if t.lower().startswith("json") else t
     try:
-        resp = client.chat.completions.create(temperature=0.2, **kw)
-    except Exception as exc:  # some models reject a custom temperature
-        log.info("Retrying without temperature: %s", exc)
+        return json.loads(t)
+    except json.JSONDecodeError:
+        a, b = t.find("{"), t.rfind("}")      # fall back to the outermost object
+        return json.loads(t[a:b + 1])
+
+
+def _call(client, messages: list) -> dict:
+    _, model, _, extra = _provider()
+    kw = dict(model=model, messages=messages,
+              response_format={"type": "json_object"}, timeout=config.LLM_TIMEOUT, **extra)
+    thinking = config.LLM_PROVIDER == "deepseek" and config.DEEPSEEK_THINKING
+    try:
+        # sampling params may be ignored or rejected in thinking mode, so skip temperature there
+        resp = client.chat.completions.create(**kw) if thinking else \
+            client.chat.completions.create(temperature=0.2, **kw)
+    except Exception as exc:
+        log.info("Retrying without response_format/temperature: %s", exc)
+        kw.pop("response_format", None)
         resp = client.chat.completions.create(**kw)
-    return json.loads(resp.choices[0].message.content)
+    return _parse_json(resp.choices[0].message.content)
+
 
 
 def review(live: dict, feats: pd.DataFrame) -> dict:
     p = float(live["p_up_ensemble"])
-    if not config.OPENAI_API_KEY:
-        log.warning("OPENAI_API_KEY not set: LLM review skipped.")
+    key, _, base_url, _ = _provider()
+    if not key:
+        log.warning("No API key for provider %s: LLM review skipped.", config.LLM_PROVIDER)
         return _result(live, "UNAVAILABLE", p, {}, "LLM review skipped: no API key.")
     try:
         from openai import OpenAI
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        client = OpenAI(api_key=key, base_url=base_url) if base_url else OpenAI(api_key=key)
+
         messages = [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": build_context(live, feats)},
