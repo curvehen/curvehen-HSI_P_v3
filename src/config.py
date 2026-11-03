@@ -193,6 +193,10 @@ MULTI_LS_PATH = MULTI_STATE / f"ls_returns_{MULTI_TARGET}.parquet"
 MULTI_EPOCHS = 20     # fewer than the HSI model: the pooled table has many more rows
 MULTI_BATCH = 256
 
+MULTI_LIVE_JSON = MULTI_STATE / f"live_ranking_{MULTI_TARGET}.json"
+MULTI_LIVE_CSV = MULTI_STATE / f"live_ranking_{MULTI_TARGET}.csv"
+MULTI_RANK_LOG = MULTI_STATE / f"ranking_log_{MULTI_TARGET}.csv"
+
 
 
 
