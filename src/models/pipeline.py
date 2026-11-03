@@ -18,6 +18,8 @@ from src.features import builder
 from src.models.common import prepare, walk_forward_splits
 from src.models.deep import get_sequence_models
 from src.models.tabular import LGBMModel, get_tabular_models
+from src.models import tuning
+
 
 log = logging.getLogger(__name__)
 
@@ -29,9 +31,23 @@ NEUTRAL_BAND = 0.02      # |p - 0.5| below this => NEUTRAL
 METRICS_PATH = config.METRICS_PATH
 
 
-def _all_models(names: Optional[List[str]] = None) -> list:
-    models = get_tabular_models() + get_sequence_models()
+def _all_models(names: Optional[List[str]] = None, tuned: Optional[dict] = None) -> list:
+    models = get_tabular_models(tuned) + get_sequence_models()
     return [m for m in models if not names or m.name in names]
+
+
+def _tune_all(X: pd.DataFrame, y: np.ndarray, names: Optional[List[str]]):
+    """Tune each tunable model on THIS window only. Returns (params, info)."""
+    params, info = {}, {}
+    for n in config.TUNE_MODELS:
+        if names and n not in names:
+            continue
+        p, i = tuning.tune(n, X, y)
+        if p:
+            params[n] = p
+        info[n] = i
+    return params, info
+
 
 
 def _predict(model, X: pd.DataFrame, start: int, end: int) -> np.ndarray:
@@ -45,15 +61,25 @@ def _predict(model, X: pd.DataFrame, start: int, end: int) -> np.ndarray:
 
 # ------------------------------------------------------------------ backtest
 def run_backtest(X: pd.DataFrame, y: np.ndarray, n_lab: int,
-                 feats: pd.DataFrame, names: Optional[List[str]] = None) -> pd.DataFrame:
+                 feats: pd.DataFrame, names: Optional[List[str]] = None,
+                 tune: bool = False) -> pd.DataFrame:
     preds: Dict[str, List[np.ndarray]] = {}
     idx_parts = []
+    tuned: dict = {}
+    tune_log: list = []
+
     splits = list(walk_forward_splits(
         n_lab, config.WF_MIN_TRAIN, config.WF_STEP, config.WF_MAX_TRAIN))
     for k, (tr0, s, e) in enumerate(splits, 1):
         log.info("Fold %d/%d | train rows %d-%d | test %s -> %s",
                  k, len(splits), tr0, s, X.index[s].date(), X.index[e - 1].date())
-        for m in _all_models(names):
+
+        if tune and (k - 1) % config.TUNE_EVERY_FOLDS == 0:
+            tuned, info = _tune_all(X.iloc[tr0:s], y[tr0:s], names)
+            tune_log.append({"fold": k, "train_end": str(X.index[s - 1].date()),
+                             "params": tuned, "info": info})
+
+        for m in _all_models(names, tuned):
             try:
                 m.fit(X.iloc[tr0:s], y[tr0:s])
                 p = _predict(m, X, s, e)
@@ -67,6 +93,9 @@ def run_backtest(X: pd.DataFrame, y: np.ndarray, n_lab: int,
     oos = pd.DataFrame({f"p_{k}": np.concatenate(v) for k, v in preds.items()}, index=idx)
     oos["target_dir"] = feats.loc[idx, "target_dir"].values
     oos["target_ret"] = feats.loc[idx, "target_ret"].values
+    if tune:
+        config.TUNING_LOG_PATH.write_text(json.dumps(tune_log, indent=2, default=str))
+
     return add_ensembles(oos)
 
 
@@ -192,15 +221,24 @@ def _direction(p: float) -> str:
 
 def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
              names: Optional[List[str]] = None,
-             oos: Optional[pd.DataFrame] = None) -> dict:
+             oos: Optional[pd.DataFrame] = None, tune: bool = False) -> dict:
+
     """Retrain every model on the latest window and predict the live row."""
     if len(X) != n_lab + 1:
         raise RuntimeError("No unlabelled live row: the last panel row must have a NaN target.")
     tr0 = 0 if config.WF_MAX_TRAIN is None else max(0, n_lab - config.WF_MAX_TRAIN)
 
+    if tune:
+        tuned, _ = _tune_all(X.iloc[tr0:n_lab], y[tr0:n_lab], names)
+        config.TUNED_PARAMS_PATH.write_text(json.dumps(tuned, indent=2))
+    elif config.TUNED_PARAMS_PATH.exists():
+        tuned = json.loads(config.TUNED_PARAMS_PATH.read_text())
+    else:
+        tuned = {}
+
     preds: Dict[str, float] = {}
     lgbm = None
-    for m in _all_models(names):
+    for m in _all_models(names, tuned):
         try:
             m.fit(X.iloc[tr0:n_lab], y[tr0:n_lab])
             preds[m.name] = float(_predict(m, X, n_lab, n_lab + 1)[0])
@@ -239,6 +277,8 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
         "live_row_nan": int(X.iloc[-1].isna().sum()),
         "n_features": int(X.shape[1]),
         "top_features_live": top,
+        "tuned_models": sorted(tuned),
+
     }
     config.LIVE_PATH.write_text(json.dumps(result, indent=2, ensure_ascii=False))
     log.info("Live: %s | P(up)=%.3f | %s -> %s", result["direction"], p_ens,
@@ -253,6 +293,9 @@ def main() -> None:
     ap.add_argument("--models", nargs="*", help="subset: logit lgbm xgb lstm gru transformer")
     ap.add_argument("--skip-data", action="store_true",
                     help="reuse cached features.parquet instead of rebuilding")
+    ap.add_argument("--tune", action="store_true",
+                    help="tune LightGBM/XGBoost (backtest: per fold; live: refit params)")
+
     args = ap.parse_args()
 
     if args.skip_data and config.FEATURES_PATH.exists():
@@ -264,16 +307,18 @@ def main() -> None:
 
     oos = None
     if args.mode in ("backtest", "all"):
-        oos = run_backtest(X, y, n_lab, feats, args.models)
-        oos.to_parquet(config.OOS_PATH)
+        oos = run_backtest(X, y, n_lab, feats, args.models, tune=args.tune)
+        oos.to_parquet(config.OOS_TUNED_PATH if args.tune else config.OOS_PATH)
         metrics = evaluate(oos)
-        metrics.to_csv(METRICS_PATH)
+        metrics.to_csv(config.METRICS_TUNED_PATH if args.tune else METRICS_PATH)
         print(metrics.round(4).to_string())
+
 
     if args.mode in ("live", "all"):
         if oos is None and config.OOS_PATH.exists():
             oos = pd.read_parquet(config.OOS_PATH)
-        res = run_live(X, y, n_lab, feats, args.models, oos)
+        res = run_live(X, y, n_lab, feats, args.models, oos, tune=args.tune)
+
         print(json.dumps(res, indent=2, ensure_ascii=False))
 
 
