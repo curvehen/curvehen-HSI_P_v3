@@ -236,10 +236,20 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
     if tune:
         tuned, _ = _tune_all(X.iloc[tr0:n_lab], y[tr0:n_lab], names)
         config.TUNED_PARAMS_PATH.write_text(json.dumps(tuned, indent=2))
+        config.TUNED_META_PATH.write_text(json.dumps({
+            "tuned_at": pd.Timestamp.now(tz="Asia/Hong_Kong").strftime("%Y-%m-%d"),
+            "n_train_rows": int(n_lab - tr0)}))
     elif config.TUNED_PARAMS_PATH.exists():
         tuned = json.loads(config.TUNED_PARAMS_PATH.read_text())
     else:
         tuned = {}
+    tuned_at = None
+    if tuned and config.TUNED_META_PATH.exists():
+        try:
+            tuned_at = json.loads(config.TUNED_META_PATH.read_text()).get("tuned_at")
+        except Exception:
+            pass
+
 
     preds: Dict[str, float] = {}
     lgbm = None
@@ -283,6 +293,8 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
         "n_features": int(X.shape[1]),
         "top_features_live": top,
         "tuned_models": sorted(tuned),
+        "tuned_at": tuned_at,
+        "tuned_oos_weights": bool(tuned) and config.active_hsi_paths()[0] == config.OOS_TUNED_PATH,
         "target_type": config.HSI_TARGET,
         "horizon": config.HSI_HORIZON,
     }
