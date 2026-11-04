@@ -114,4 +114,28 @@ jobs:
           restore-keys: data-
       - name: Pooled backtests, tuning and parameters
         env:
-          FRED_API_KEY: ${{ secrets.FRED_API
+          FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
+          WITH_GRU: ${{ inputs.with_gru }}
+        run: |
+          python -m src.multi.features_long
+          python -m src.multi.pooled --models logit lgbm xgb
+          if [ "$WITH_GRU" = "true" ]; then python -m src.multi.pooled_deep; fi
+          python -m src.multi.pooled --models logit lgbm xgb --tune
+          python -m src.multi.evaluate
+          python -m src.multi.evaluate --tuned
+          python -m src.multi.compare_tuning
+          python -m src.multi.live --no-gru --tune
+      - name: Commit state
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state
+          if git diff --staged --quiet; then
+            echo "No state changes."
+          else
+            git commit -m "chore: quarterly refresh stocks $(date -u +%F) [skip ci]"
+            git pull --rebase
+            git push
+          fi
+
