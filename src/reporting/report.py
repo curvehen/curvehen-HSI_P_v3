@@ -82,6 +82,15 @@ probability adjustment is capped at &plusmn;{{ cap }}.</div>
 {% else %}<div class="muted">LLM review not available for this run.</div>{% endif %}
 </div>
 
+{% if tuning %}<div class="card"><h2>Hyperparameter tuning</h2>
+<div>Tuned models: <b>{{ tuning.models|join(', ') }}</b> &middot; last tuned {{ tuning.tuned_at or 'n/a' }}</div>
+{% if tuning.rows %}<table style="margin-top:8px"><tr><th>Model</th><th>Folds tuned</th><th>Default kept</th><th>Mean validation gain</th></tr>
+{% for r in tuning.rows %}<tr><td>{{ r.model }}</td><td>{{ r.folds }}</td><td>{{ r.default_share|pct }}</td><td>{{ r.gain|num(5) }}</td></tr>{% endfor %}
+</table>{% endif %}
+<div class="muted">Validation gain is log-loss improvement over the default parameters on the inner
+folds. It is optimistic because the search picked the best trial. A high "Default kept" share suggests
+tuning adds little. Judge it with the tuned vs untuned out-of-sample comparison.</div></div>{% endif %}
+
 {% if top_features %}<div class="card"><h2>Top model features (live values)</h2>
 <table><tr><th>Feature</th><th>Value</th></tr>
 {% for k, v in top_features.items() %}<tr><td>{{ k }}</td><td>{{ v|num(5) }}</td></tr>{% endfor %}
@@ -148,12 +157,48 @@ def _json(path: Path) -> dict:
 def _records(df: pd.DataFrame) -> List[dict]:
     return df.astype(object).where(df.notna(), None).to_dict("records")
 
+def _tuning_ctx(live: dict):
+    tuned = live.get("tuned_models") or []
+    if not tuned:
+        return None
+    rows = []
+    try:
+        tlog = json.loads(Path(config.TUNING_LOG_PATH).read_text())
+    except Exception:
+        tlog = []
+    for m in tuned:
+        infos = [e["info"][m] for e in tlog
+                 if isinstance(e.get("info", {}).get(m), dict) and "best_score" in e["info"][m]]
+        if not infos:
+            continue
+        gains = [i["default_score"] - i["best_score"] for i in infos if i.get("default_score") is not None]
+        rows.append({
+            "model": m, "folds": len(infos),
+            "default_share": sum(bool(i.get("best_is_default")) for i in infos) / len(infos),
+            "gain": sum(gains) / len(gains) if gains else None,
+        })
+    return {"models": tuned, "tuned_at": live.get("tuned_at"), "rows": rows}
+
 
 def build_context() -> dict:
     live = _json(config.LIVE_PATH)
     if not live:
         raise RuntimeError("live_prediction.json missing: run the pipeline in live mode first.")
     warnings: List[str] = []
+  
+    if live.get("tuned_models"):
+        if not live.get("tuned_oos_weights"):
+            warnings.append("Tuned parameters are in use, but the weights and metrics come from the "
+                            "untuned backtest. Run `python main.py --backtest --tune`.")
+        ta = live.get("tuned_at")
+        if ta:
+            age = (pd.Timestamp.now().normalize() - pd.Timestamp(ta)).days
+            if age > config.TUNE_STALE_DAYS:
+                warnings.append(f"Tuned parameters are {age} days old (limit {config.TUNE_STALE_DAYS}). "
+                                "Re-tune with `--tune`.")
+        else:
+            warnings.append("Tuned parameters have no recorded date: re-tune to be sure they are current.")
+  
     if not config.HSI_FLAT:
         warnings.append("Close-to-close target: the overnight gap is included, so this is not tradable "
                         "with US overnight data. Use HSI_TARGET=oc for a tradable estimate.")
@@ -171,8 +216,9 @@ def build_context() -> dict:
     )
 
     metrics: List[dict] = []
-    if config.METRICS_PATH.exists():
-        m = pd.read_csv(config.METRICS_PATH, index_col=0)
+    metrics_path = config.active_hsi_paths()[1]
+    if metrics_path.exists():
+        m = pd.read_csv(metrics_path, index_col=0)
         cols = [c for c in METRIC_COLS if c in m.columns]
         metrics = _records(m[cols].reset_index().rename(columns={"index": "model"}))
         ens = m.loc["ens_weighted"] if "ens_weighted" in m.index else None
@@ -197,6 +243,8 @@ def build_context() -> dict:
         "score": score, "recent": recent, "warnings": warnings,
         "cap": config.LLM_MAX_ADJ,
         "chart_titles": list(CHART_TITLES.items()),
+        "tuning": _tuning_ctx(live),
+
     }
 
 
