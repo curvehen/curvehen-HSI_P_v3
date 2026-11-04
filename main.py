@@ -26,14 +26,25 @@ from src.reporting import emailer, report
 log = logging.getLogger("main")
 
 
-def _load_oos():
-    if not config.OOS_PATH.exists():
+def _tuned_in_use(tune: bool) -> bool:
+    """True if this run trains with tuned parameters (new or saved)."""
+    if tune:
+        return True
+    try:
+        return bool(json.loads(config.TUNED_PARAMS_PATH.read_text()))
+    except Exception:
+        return False
+
+
+def _load_oos(path):
+    if not path.exists():
         return None
     try:
-        return pd.read_parquet(config.OOS_PATH)
+        return pd.read_parquet(path)
     except Exception as exc:
         log.warning("Cannot read OOS file (%s): will rebuild.", exc)
         return None
+
 
 
 def _backtest_needed(oos, X: pd.DataFrame, n_lab: int) -> bool:
@@ -50,6 +61,8 @@ def main() -> int:
     ap.add_argument("--backtest", action="store_true", help="force a fresh backtest")
     ap.add_argument("--skip-data", action="store_true")
     ap.add_argument("--no-email", action="store_true")
+    ap.add_argument("--tune", action="store_true",
+                    help="tune LightGBM/XGBoost: tuned backtest + refit live parameters (slow)")
     ap.add_argument("--models", nargs="*", help="subset: logit lgbm xgb lstm gru transformer")
     args = ap.parse_args()
 
@@ -62,19 +75,30 @@ def main() -> int:
     log.info("Rows: %d labelled + 1 live | features: %d", n_lab, X.shape[1])
 
     # 2) walk-forward backtest (slow: only when forced, missing or stale)
-    oos = _load_oos()
+    use_tuned = _tuned_in_use(args.tune)
+    oos = _load_oos(config.OOS_TUNED_PATH if use_tuned else config.OOS_PATH)
+    if oos is None and use_tuned and not args.tune:
+        oos = _load_oos(config.OOS_PATH)
+        if oos is not None:
+            log.warning("No tuned backtest found: weights come from the untuned OOS file. "
+                        "Run `python main.py --backtest --tune`.")
     if args.backtest or _backtest_needed(oos, X, n_lab):
-        log.info("Running walk-forward backtest ...")
-        oos = pipeline.run_backtest(X, y, n_lab, feats, args.models)
-        oos.to_parquet(config.OOS_PATH)
+        if use_tuned and not args.tune:
+            log.warning("Backtest is stale: rebuilding it UNTUNED, so weights will not match "
+                        "the tuned parameters. Refresh locally with --backtest --tune.")
+        log.info("Running walk-forward backtest (tune=%s) ...", args.tune)
+        oos = pipeline.run_backtest(X, y, n_lab, feats, args.models, tune=args.tune)
+        oos.to_parquet(config.OOS_TUNED_PATH if args.tune else config.OOS_PATH)
         metrics = pipeline.evaluate(oos)
-        metrics.to_csv(config.METRICS_PATH)
+        metrics.to_csv(config.METRICS_TUNED_PATH if args.tune else config.METRICS_PATH)
         print(metrics.round(4).to_string())
     else:
         log.info("Using stored backtest (ends %s).", oos.index[-1].date())
 
+
     # 3) live prediction (retrains every model on the latest window)
-    live = pipeline.run_live(X, y, n_lab, feats, args.models, oos)
+    live = pipeline.run_live(X, y, n_lab, feats, args.models, oos, tune=args.tune)
+
 
     # 4) LLM challenge review (never blocks the run)
     try:
