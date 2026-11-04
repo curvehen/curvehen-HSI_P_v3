@@ -91,8 +91,9 @@ def run_backtest(X: pd.DataFrame, y: np.ndarray, n_lab: int,
 
     idx = pd.DatetimeIndex(np.concatenate([i.values for i in idx_parts]))
     oos = pd.DataFrame({f"p_{k}": np.concatenate(v) for k, v in preds.items()}, index=idx)
-    oos["target_dir"] = feats.loc[idx, "target_dir"].values
-    oos["target_ret"] = feats.loc[idx, "target_ret"].values
+    oos["target_dir"] = feats.loc[idx, config.HSI_DIR_COL].values
+    oos["target_ret"] = feats.loc[idx, config.HSI_RET_COL].values
+
     if tune:
         config.TUNING_LOG_PATH.write_text(json.dumps(tune_log, indent=2, default=str))
 
@@ -146,7 +147,11 @@ def _stats(name: str, p: np.ndarray, y: np.ndarray, r: np.ndarray,
     if pos is None:
         pos = np.where(p > 0.5 + NEUTRAL_BAND, 1.0,
                        np.where(p < 0.5 - NEUTRAL_BAND, -1.0, 0.0))
-    turn = np.abs(np.diff(pos, prepend=0.0))
+    if config.HSI_FLAT:   # open -> close: entry and exit every day
+        turn = 2.0 * np.abs(pos)
+    else:
+        turn = np.abs(np.diff(pos, prepend=0.0))
+
     net = pos * r - turn * COST_BPS / 1e4
     sd = net.std(ddof=1)
     cum = np.cumsum(net)
@@ -278,7 +283,8 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
         "n_features": int(X.shape[1]),
         "top_features_live": top,
         "tuned_models": sorted(tuned),
-
+        "target_type": config.HSI_TARGET,
+        "horizon": config.HSI_HORIZON,
     }
     config.LIVE_PATH.write_text(json.dumps(result, indent=2, ensure_ascii=False))
     log.info("Live: %s | P(up)=%.3f | %s -> %s", result["direction"], p_ens,
