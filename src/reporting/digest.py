@@ -46,7 +46,8 @@ def collect(targets: List[dict], results: Dict[str, int], started: float) -> Lis
         llm = _read(ROOT / "data" / "processed" / n / "llm_review.json")
         use_llm = (llm and llm.get("verdict") != "UNAVAILABLE"
                    and abs(float(llm.get("model_p_up", -1)) - float(live["p_up_ensemble"])) < 1e-3)
-        sc = _read(ROOT / "state" / n / "scorecard.json").get("final_after_llm", {})
+        sc = _read(ROOT / "state" / n / f"scorecard_{config.HSI_TARGET}.json").get("final_after_llm", {})
+
         reports = sorted((ROOT / "reports" / n).glob("*.html"), key=lambda p: p.stat().st_mtime)
         row.update(
             target_date=live.get("target_date", ""),
