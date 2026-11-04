@@ -1,8 +1,9 @@
 """Assemble the model-ready feature table from the Part 1 panel.
 
 Output: one row per HK trading date T. Features use only information known
-before the next HK open. Targets (target_ret, target_dir) refer to T' (next
-trading day). The last row has NaN targets and is used for live inference.
+before the next HK open. Targets (target_ret, target_dir, target_oc_ret,
+target_oc_dir) refer to T' (next trading day). The last row has NaN targets
+and is used for live inference.
 """
 import logging
 
@@ -123,9 +124,10 @@ def build_features(panel: pd.DataFrame = None) -> pd.DataFrame:
     if panel is None:
         panel = build_dataset.load_panel()
 
+    tgt = config.TARGET_NAME
     cross = _cross_asset(panel)
     parts = [
-        technical.hsi_technical(panel, config.TARGET_NAME)
+        technical.hsi_technical(panel, tgt),
         technical.calendar_features(panel.index, panel["next_date"]),
         candles.add_candle_features(panel, config.CANDLE_ASSETS),
         cross,
@@ -153,10 +155,9 @@ def build_features(panel: pd.DataFrame = None) -> pd.DataFrame:
     feats["target_dir"] = panel.loc[feats.index, "target_dir"]
     feats["target_oc_ret"] = panel.loc[feats.index, "target_oc_ret"]
     feats["target_oc_dir"] = panel.loc[feats.index, "target_oc_dir"]
-    feats["ref_hsi_open"] = panel.loc[feats.index, f"{config.TARGET_NAME}_open"]
-
     feats["next_date"] = panel.loc[feats.index, "next_date"]
-    feats["ref_hsi_close"] = panel.loc[feats.index, f"{config.TARGET_NAME}_close"]
+    feats["ref_hsi_close"] = panel.loc[feats.index, f"{tgt}_close"]
+    feats["ref_hsi_open"] = panel.loc[feats.index, f"{tgt}_open"]
 
     n_feat = len(feature_columns(feats))
     last_nan = int(feats[feature_columns(feats)].iloc[-1].isna().sum())
