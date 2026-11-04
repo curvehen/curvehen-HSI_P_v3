@@ -98,7 +98,8 @@ def main() -> int:
 
     # 3) live prediction (retrains every model on the latest window)
     live = pipeline.run_live(X, y, n_lab, feats, args.models, oos, tune=args.tune)
-
+    log.info("live type=%s keys=%s", type(live).__name__,
+             list(live.keys()) if hasattr(live, "keys") else live)
 
     # 4) LLM challenge review (never blocks the run)
     try:
