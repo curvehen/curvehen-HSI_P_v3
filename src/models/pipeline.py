@@ -1,8 +1,9 @@
 """Walk-forward backtest, self-learning ensemble, live next-day prediction.
 
 Self-learning = (1) every fold and every live run retrains all models on the
-latest data; (2) ensemble weights are re-computed from each model's trailing
-out-of-sample log-loss, using only labels already known at prediction time.
+latest data (optionally re-tuning LightGBM / XGBoost on that window only);
+(2) ensemble weights are re-computed from each model's trailing out-of-sample
+log-loss, using only labels already known at prediction time.
 """
 import argparse
 import json
@@ -15,11 +16,10 @@ from sklearn.metrics import log_loss, roc_auc_score
 
 from src import config
 from src.features import builder
+from src.models import tuning
 from src.models.common import prepare, walk_forward_splits
 from src.models.deep import get_sequence_models
 from src.models.tabular import LGBMModel, get_tabular_models
-from src.models import tuning
-
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +29,7 @@ WEIGHT_TEMP = 20.0       # higher = weights concentrate on recent winners
 MIN_HIST = 20
 NEUTRAL_BAND = 0.02      # |p - 0.5| below this => NEUTRAL
 METRICS_PATH = config.METRICS_PATH
+COST_BPS = 5.0           # one-way cost per unit of position change (bps). PLACEHOLDER: use your real costs.
 
 
 def _all_models(names: Optional[List[str]] = None, tuned: Optional[dict] = None) -> list:
@@ -49,7 +50,6 @@ def _tune_all(X: pd.DataFrame, y: np.ndarray, names: Optional[List[str]]):
     return params, info
 
 
-
 def _predict(model, X: pd.DataFrame, start: int, end: int) -> np.ndarray:
     """P(up) for rows [start, end) using only rows <= each row."""
     if model.kind == "tabular":
@@ -67,18 +67,15 @@ def run_backtest(X: pd.DataFrame, y: np.ndarray, n_lab: int,
     idx_parts = []
     tuned: dict = {}
     tune_log: list = []
-
     splits = list(walk_forward_splits(
         n_lab, config.WF_MIN_TRAIN, config.WF_STEP, config.WF_MAX_TRAIN))
     for k, (tr0, s, e) in enumerate(splits, 1):
         log.info("Fold %d/%d | train rows %d-%d | test %s -> %s",
                  k, len(splits), tr0, s, X.index[s].date(), X.index[e - 1].date())
-
         if tune and (k - 1) % config.TUNE_EVERY_FOLDS == 0:
             tuned, info = _tune_all(X.iloc[tr0:s], y[tr0:s], names)
             tune_log.append({"fold": k, "train_end": str(X.index[s - 1].date()),
                              "params": tuned, "info": info})
-
         for m in _all_models(names, tuned):
             try:
                 m.fit(X.iloc[tr0:s], y[tr0:s])
@@ -93,10 +90,8 @@ def run_backtest(X: pd.DataFrame, y: np.ndarray, n_lab: int,
     oos = pd.DataFrame({f"p_{k}": np.concatenate(v) for k, v in preds.items()}, index=idx)
     oos["target_dir"] = feats.loc[idx, config.HSI_DIR_COL].values
     oos["target_ret"] = feats.loc[idx, config.HSI_RET_COL].values
-
     if tune:
         config.TUNING_LOG_PATH.write_text(json.dumps(tune_log, indent=2, default=str))
-
     return add_ensembles(oos)
 
 
@@ -121,9 +116,6 @@ def _weights(trailing: pd.DataFrame, avail: pd.DataFrame) -> pd.DataFrame:
     eq = avail.astype(float).where(avail)
     w.loc[no_hist] = eq.loc[no_hist]
     return w.div(w.sum(axis=1), axis=0)
-
-
-COST_BPS = 5.0  # one-way cost per unit of position change (bps). Replace with your real costs.
 
 
 def add_ensembles(oos: pd.DataFrame) -> pd.DataFrame:
@@ -151,7 +143,6 @@ def _stats(name: str, p: np.ndarray, y: np.ndarray, r: np.ndarray,
         turn = 2.0 * np.abs(pos)
     else:
         turn = np.abs(np.diff(pos, prepend=0.0))
-
     net = pos * r - turn * COST_BPS / 1e4
     sd = net.std(ddof=1)
     cum = np.cumsum(net)
@@ -171,8 +162,8 @@ def _stats(name: str, p: np.ndarray, y: np.ndarray, r: np.ndarray,
 
 
 def evaluate(oos: pd.DataFrame) -> pd.DataFrame:
-    """OOS metrics per model and ensemble, plus a majority-class / buy-and-hold baseline.
-    Strategy: long if p > 0.5+band, short if p < 0.5-band, else flat; costs on position changes."""
+    """OOS metrics per model and ensemble, plus a daily long baseline.
+    Strategy: long if p > 0.5+band, short if p < 0.5-band, else flat; costs on trades."""
     rows = []
     for c in _pcols(oos) + ["ens_equal", "ens_weighted"]:
         d = oos[[c, "target_dir", "target_ret"]].dropna()
@@ -224,10 +215,17 @@ def _direction(p: float) -> str:
         return "DOWN"
     return "NEUTRAL"
 
+
+def _saved_tuned() -> bool:
+    try:
+        return bool(json.loads(config.TUNED_PARAMS_PATH.read_text()))
+    except Exception:
+        return False
+
+
 def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
              names: Optional[List[str]] = None,
              oos: Optional[pd.DataFrame] = None, tune: bool = False) -> dict:
-
     """Retrain every model on the latest window and predict the live row."""
     if len(X) != n_lab + 1:
         raise RuntimeError("No unlabelled live row: the last panel row must have a NaN target.")
@@ -249,7 +247,6 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
             tuned_at = json.loads(config.TUNED_META_PATH.read_text()).get("tuned_at")
         except Exception:
             pass
-
 
     preds: Dict[str, float] = {}
     lgbm = None
@@ -279,71 +276,69 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
 
     result = {
         "generated_at": pd.Timestamp.now(tz="Asia/Hong_Kong").isoformat(timespec="seconds"),
-        "feature_date": str(X.index[-1].date()),
-        "target_date": str(pd.Timestamp(feats["next_date"].iloc[-1]).date()),
-        "ref_hsi_close": _f(feats["ref_hsi_close"].iloc[-1]),
-        "direction": _direction(p_ens),
-        "p_up_ensemble": _f(p_ens),
+        "target_mode": config.HSI_TARGET,
+        "as_of": str(X.index[-1].date()),
+        "last_labeled": str(X.index[n_lab - 1].date()),
+        "target_date": str(pd.Timestamp(feats["next_date"].iloc[-1]).date())
+        if "next_date" in feats.columns else None,
+        "p_up": _f(p_ens),
         "p_up_equal": _f(p_eq),
-        "model_probs": {k: _f(v) for k, v in preds.items()},
+        "direction": _direction(p_ens),
+        "agreement": _f(agreement),
+        "models": {k: _f(v) for k, v in preds.items()},
         "weights": {k: _f(w[k]) for k in ok},
-        "model_agreement": _f(agreement),
+        "top_features": top,
         "n_train_rows": int(n_lab - tr0),
-        "live_row_nan": int(X.iloc[-1].isna().sum()),
-        "n_features": int(X.shape[1]),
-        "top_features_live": top,
-        "tuned_models": sorted(tuned),
+        "tuned": bool(tuned),
         "tuned_at": tuned_at,
-        "tuned_oos_weights": bool(tuned) and config.active_hsi_paths()[0] == config.OOS_TUNED_PATH,
-        "target_type": config.HSI_TARGET,
-        "horizon": config.HSI_HORIZON,
+        "tuned_oos_weights": bool(tuned) and oos is not None
+                             and config.TUNING_LOG_PATH.exists(),
     }
-    config.LIVE_PATH.write_text(json.dumps(result, indent=2, ensure_ascii=False))
-    log.info("Live: %s | P(up)=%.3f | %s -> %s", result["direction"], p_ens,
-             result["feature_date"], result["target_date"])
     return result
 
 
 # ------------------------------------------------------------------ CLI
+def _load_oos() -> Optional[pd.DataFrame]:
+    if config.OOS_PATH.exists():
+        return pd.read_parquet(config.OOS_PATH)
+    return None
+
+
 def main() -> None:
-    ap = argparse.ArgumentParser(description="HSI next-day model pipeline")
-    ap.add_argument("--mode", choices=["backtest", "live", "all"], default="all")
-    ap.add_argument("--models", nargs="*", help="subset: logit lgbm xgb lstm gru transformer")
-    ap.add_argument("--skip-data", action="store_true",
-                    help="reuse cached features.parquet instead of rebuilding")
+    ap = argparse.ArgumentParser(description="HSI walk-forward backtest + live prediction")
+    ap.add_argument("--mode", choices=["backtest", "live", "both"], default="both")
+    ap.add_argument("--models", default=None,
+                    help="comma-separated subset, e.g. logit,lgbm,xgb")
     ap.add_argument("--tune", action="store_true",
-                    help="tune LightGBM/XGBoost (backtest: per fold; live: refit params)")
-
+                    help="re-tune LightGBM/XGBoost with Optuna (slow)")
     args = ap.parse_args()
+    names = [n.strip() for n in args.models.split(",")] if args.models else None
 
-    if args.skip_data and config.FEATURES_PATH.exists():
-        feats = builder.load_features()
-    else:
-        from src.data import build_dataset
-        feats = builder.build_features(build_dataset.build_panel(refresh=True))
+    logging.basicConfig(level=logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    feats = builder.load_features()
     X, y, n_lab = prepare(feats)
+    log.info("Target mode: %s | labelled rows: %d | features: %d",
+             config.HSI_TARGET, n_lab, X.shape[1])
 
     oos = None
-    if args.mode in ("backtest", "all"):
-        oos = run_backtest(X, y, n_lab, feats, args.models, tune=args.tune)
-        oos.to_parquet(config.OOS_TUNED_PATH if args.tune else config.OOS_PATH)
+    if args.mode in ("backtest", "both"):
+        oos = run_backtest(X, y, n_lab, feats, names, tune=args.tune)
+        oos.to_parquet(config.OOS_PATH)
         metrics = evaluate(oos)
-        metrics.to_csv(config.METRICS_TUNED_PATH if args.tune else METRICS_PATH)
-        print(metrics.round(4).to_string())
+        metrics.to_csv(METRICS_PATH)
+        log.info("OOS metrics:\n%s", metrics.round(4).to_string())
 
-
-    if args.mode in ("live", "all"):
-        if oos is None and config.OOS_PATH.exists():
-            oos = pd.read_parquet(config.OOS_PATH)
-        res = run_live(X, y, n_lab, feats, args.models, oos, tune=args.tune)
-
-        print(json.dumps(res, indent=2, ensure_ascii=False))
+    if args.mode in ("live", "both"):
+        if oos is None:
+            oos = _load_oos()
+        result = run_live(X, y, n_lab, feats, names, oos=oos, tune=args.tune)
+        config.LIVE_PATH.write_text(json.dumps(result, indent=2, default=str))
+        log.info("Live: %s p_up=%.4f (%s)", result["target_date"],
+                 result["p_up"], result["direction"])
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
     main()
 
