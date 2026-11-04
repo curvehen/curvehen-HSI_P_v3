@@ -1,0 +1,5 @@
+[
+  {"name": "hsi", "ticker": "^HSI", "label": "HSI", "models": "logit lgbm xgb"},
+  {"name": "tencent", "ticker": "0700.HK", "label": "0700.HK", "models": "logit lgbm xgb"},
+  {"name": "hsbc_hk", "ticker": "0005.HK", "label": "0005.HK", "models": "logit lgbm xgb"}
+]
