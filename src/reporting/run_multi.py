@@ -2,8 +2,9 @@
 
 Usage:
   python run_multi.py                    # all targets
-  python run_multi.py --only tencent     # one target
+  python run_multi.py --only tencent     # one or more targets (comma-separated)
   python run_multi.py --backtest         # force fresh backtests (slow)
+  python run_multi.py --backtest --tune  # fresh backtests with tuning (very slow)
   python run_multi.py --no-email         # skip the digest
 """
 import argparse
@@ -31,7 +32,6 @@ def run_target(t: dict, backtest: bool, tune: bool = False) -> int:
         cmd.append("--backtest")
     if tune:
         cmd.append("--tune")
-
     models = (t.get("models") or "").split()
     if models:
         cmd += ["--models", *models]
