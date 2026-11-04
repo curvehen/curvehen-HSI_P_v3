@@ -5,9 +5,10 @@ split into forward-moving inner folds; in each fold:
     fit rows   = [0, s) minus its last 15% (early-stopping set)
     score rows = [s, e)   <- never seen by the fit
 No data after the training window is used, so walk-forward tests stay clean.
+For pooled (date x stock) tables, pass `dates` so cuts snap to date boundaries.
 """
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import lightgbm as lgb
 import numpy as np
@@ -61,6 +62,7 @@ def _space_xgb(t: optuna.Trial) -> dict:
 
 SPACES = {"lgbm": _space_lgbm, "xgb": _space_xgb}
 
+
 def _snap(pos: int, dates) -> int:
     """Move a row cut back to the first row of its date (dates must be sorted)."""
     if dates is None or pos <= 0 or pos >= len(dates):
@@ -73,11 +75,9 @@ def inner_folds(n: int, dates=None) -> list:
     return [(cuts[i], cuts[i + 1]) for i in range(len(cuts) - 1)]
 
 
-
 def _fit_score(name: str, params: dict, X: pd.DataFrame, y: np.ndarray,
                s: int, e: int, seed: int, dates=None) -> float:
     c = _snap(int(s * (1 - ES_FRAC)), dates)
-
     Xtr, ytr, Xes, yes = X.iloc[:c], y[:c], X.iloc[c:s], y[c:s]
     Xte, yte = X.iloc[s:e], y[s:e]
     if name == "lgbm":
@@ -138,4 +138,3 @@ def tune(name: str, X: pd.DataFrame, y: np.ndarray,
     log.info("Tuned %s: default %s -> best %.5f (%d trials)", name,
              info["default_score"], best.value, len(done))
     return params, info
-
