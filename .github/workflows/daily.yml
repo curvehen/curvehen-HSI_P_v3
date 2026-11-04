@@ -2,7 +2,7 @@ name: daily-hsi
 
 on:
   schedule:
-    # 00:30 UTC = 08:30 HKT, Mon-Fri. US cash close is 04:00-05:00 HKT, HK open is 09:30.
+    # 00:30 UTC = 08:30 HKT, Mon-Fri. US cash close is about 04:00-05:00 HKT, HK open is 09:30.
     - cron: "30 0 * * 1-5"
   workflow_dispatch:
     inputs:
@@ -10,10 +10,18 @@ on:
         description: "Force a fresh walk-forward backtest (slow)"
         type: boolean
         default: false
-      no_email:
-        description: "Do not send the email"
+      tune:
+        description: "Tune LightGBM/XGBoost (very slow; normally done in quarterly-refresh)"
         type: boolean
         default: false
+      no_email:
+        description: "Do not send the digest email"
+        type: boolean
+        default: false
+      only:
+        description: "Run only these targets from targets.json (comma-separated); empty = all"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -25,7 +33,7 @@ concurrency:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 330
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
 
@@ -48,34 +56,40 @@ jobs:
           key: data-${{ github.run_id }}
           restore-keys: data-
 
-      - name: Run pipeline
+      - name: Run targets and send digest
         env:
           FRED_API_KEY: ${{ secrets.FRED_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_MODEL: ${{ secrets.OPENAI_MODEL }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER }}
-          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
-
+          IN_BACKTEST: ${{ inputs.backtest }}
+          IN_TUNE: ${{ inputs.tune }}
+          IN_NO_EMAIL: ${{ inputs.no_email }}
+          IN_ONLY: ${{ inputs.only }}
         run: |
           ARGS=""
-          if [ "${{ inputs.backtest }}" = "true" ]; then ARGS="$ARGS --backtest"; fi
-          if [ "${{ inputs.no_email }}" = "true" ]; then ARGS="$ARGS --no-email"; fi
-          python main.py $ARGS
+          if [ "$IN_BACKTEST" = "true" ]; then ARGS="$ARGS --backtest"; fi
+          if [ "$IN_TUNE" = "true" ]; then ARGS="$ARGS --tune"; fi
+          if [ "$IN_NO_EMAIL" = "true" ]; then ARGS="$ARGS --no-email"; fi
+          if [ -n "$IN_ONLY" ]; then ARGS="$ARGS --only $IN_ONLY"; fi
+          python run_multi.py $ARGS
 
-      - name: Upload report
+      - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: hsi-report
+          name: hsi-reports
           path: |
-            reports/*.html
-            reports/*.png
+            reports/**/*.html
+            reports/**/*.png
+            !reports/multi/**
           if-no-files-found: ignore
           retention-days: 30
 
