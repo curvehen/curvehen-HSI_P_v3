@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 log = logging.getLogger("run_multi")
 
 
-def run_target(t: dict, backtest: bool) -> int:
+def run_target(t: dict, backtest: bool, tune: bool = False) -> int:
     env = {
         **os.environ,
         "TARGET_NAME": t["name"],
@@ -29,6 +29,9 @@ def run_target(t: dict, backtest: bool) -> int:
     cmd = [sys.executable, "main.py", "--no-email"]
     if backtest:
         cmd.append("--backtest")
+    if tune:
+        cmd.append("--tune")
+
     models = (t.get("models") or "").split()
     if models:
         cmd += ["--models", *models]
@@ -43,6 +46,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Multi-target daily run")
     ap.add_argument("--only", default="", help="comma-separated target names")
     ap.add_argument("--backtest", action="store_true")
+    ap.add_argument("--tune", action="store_true", help="tune LightGBM/XGBoost (slow)")
     ap.add_argument("--no-email", action="store_true")
     args = ap.parse_args()
 
@@ -55,7 +59,7 @@ def main() -> int:
         return 2
 
     started = time.time()
-    results = {t["name"]: run_target(t, args.backtest) for t in targets}
+    results = {t["name"]: run_target(t, args.backtest, args.tune) for t in targets}
 
     from src.reporting import digest  # imported late: config reads env at import
     rows = digest.collect(targets, results, started)
