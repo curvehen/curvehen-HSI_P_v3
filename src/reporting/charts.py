@@ -18,7 +18,8 @@ log = logging.getLogger(__name__)
 
 def _net(p: np.ndarray, r: np.ndarray) -> np.ndarray:
     pos = np.where(p > 0.5 + NEUTRAL_BAND, 1.0, np.where(p < 0.5 - NEUTRAL_BAND, -1.0, 0.0))
-    turn = np.abs(np.diff(pos, prepend=0.0))
+    turn = 2.0 * np.abs(pos) if config.HSI_FLAT else np.abs(np.diff(pos, prepend=0.0))
+
     return pos * r - turn * COST_BPS / 1e4
 
 
