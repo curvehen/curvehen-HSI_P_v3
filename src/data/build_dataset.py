@@ -128,7 +128,12 @@ def build_panel(refresh: bool = True) -> pd.DataFrame:
     panel["target_ret"] = np.log(close.shift(-1) / close)
     panel["target_dir"] = (panel["target_ret"] > 0).astype(float)
     panel.loc[panel["target_ret"].isna(), "target_dir"] = np.nan
+    opn = panel[f"{config.TARGET_NAME}_open"].where(lambda s: s > 0)
+    panel["target_oc_ret"] = np.log(close.shift(-1) / opn.shift(-1))   # open(T') -> close(T')
+    panel["target_oc_dir"] = (panel["target_oc_ret"] > 0).astype(float)
+    panel.loc[panel["target_oc_ret"].isna(), "target_oc_dir"] = np.nan
     panel["next_date"] = next_keys
+
 
     _report_quality(panel)
     panel.to_parquet(PANEL_PATH)
