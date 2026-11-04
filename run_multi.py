@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parent
 log = logging.getLogger("run_multi")
 
 
-def run_target(t: dict, backtest: bool, tune: bool = False) -> int:
+def run_target(t: dict, backtest: bool, tune: bool = False,
+               live_only: bool = False, deep_refit: bool = False) -> int:
     env = {
         **os.environ,
         "TARGET_NAME": t["name"],
@@ -35,6 +36,11 @@ def run_target(t: dict, backtest: bool, tune: bool = False) -> int:
     models = (t.get("models") or "").split()
     if models:
         cmd += ["--models", *models]
+
+    if live_only:
+        cmd.append("--live-only")
+    if deep_refit:
+        cmd.append("--deep-refit")
     log.info("=== %s (%s) ===", t["name"], " ".join(cmd))
     t0 = time.time()
     rc = subprocess.run(cmd, cwd=ROOT, env=env).returncode
@@ -48,6 +54,8 @@ def main() -> int:
     ap.add_argument("--backtest", action="store_true")
     ap.add_argument("--tune", action="store_true", help="tune LightGBM/XGBoost (slow)")
     ap.add_argument("--no-email", action="store_true")
+    ap.add_argument("--live-only", action="store_true")
+    ap.add_argument("--deep-refit", action="store_true")
     args = ap.parse_args()
 
     targets = json.loads((ROOT / "targets.json").read_text())
@@ -59,7 +67,8 @@ def main() -> int:
         return 2
 
     started = time.time()
-    results = {t["name"]: run_target(t, args.backtest, args.tune) for t in targets}
+    results = {t["name"]: run_target(t, args.backtest, args.tune,
+                                     args.live_only, args.deep_refit) for t in targets}
 
     from src.reporting import digest  # imported late: config reads env at import
     rows = digest.collect(targets, results, started)
