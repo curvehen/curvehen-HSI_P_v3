@@ -37,9 +37,11 @@ def _v(x) -> Optional[float]:
 
 
 def _oos_summary() -> dict:
-    if not config.METRICS_PATH.exists():
+    metrics_path = config.active_hsi_paths()[1]
+    if not metrics_path.exists():
         return {}
-    m = pd.read_csv(config.METRICS_PATH, index_col=0)
+    m = pd.read_csv(metrics_path, index_col=0)
+
     keep = ["accuracy", "auc", "logloss", "sharpe", "hit_rate_traded", "n"]
     out = {}
     for name in ("ens_weighted", "ens_equal", "baseline_buyhold"):
