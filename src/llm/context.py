@@ -8,6 +8,11 @@ import pandas as pd
 from src import config
 from src.features import candles
 
+_PREFIX_ATTRS = ("TARGET_PREFIX", "TARGET_KEY", "TARGET_NAME", "TARGET_SLUG")
+_T = next((getattr(config, a) for a in _PREFIX_ATTRS if getattr(config, a, None)), None)
+if _T is None:
+    raise RuntimeError(f"No target prefix found in config; tried {_PREFIX_ATTRS}")
+    
 KEY_FEATURES = [
     # overnight US / China proxies
     "spx_ret1", "nasdaq_ret1", "nq_fut_ret1", "sox_ret1", "kweb_ret1", "fxi_ret1",
