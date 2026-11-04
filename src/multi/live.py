@@ -31,6 +31,12 @@ def _train_mask(idx: pd.DatetimeIndex, has: np.ndarray) -> np.ndarray:
         dates = dates[-config.MULTI_WF_MAX_DATES:]
     return np.asarray(idx >= dates[0]) & has
 
+def _tuned_at() -> Optional[str]:
+    try:
+        return json.loads(config.MULTI_TUNED_META_PATH.read_text()).get("tuned_at")
+    except Exception:
+        return None
+
 
 def _tuned_params(df: pd.DataFrame, fc: List[str], trm: np.ndarray,
                   names: Optional[List[str]], tune: bool) -> dict:
@@ -46,7 +52,10 @@ def _tuned_params(df: pd.DataFrame, fc: List[str], trm: np.ndarray,
             if p:
                 out[n] = p
         config.MULTI_TUNED_PARAMS_PATH.write_text(json.dumps(out, indent=2))
+        config.MULTI_TUNED_META_PATH.write_text(json.dumps({
+            "tuned_at": pd.Timestamp.now(tz="Asia/Hong_Kong").strftime("%Y-%m-%d")}))
         return out
+
     if config.MULTI_TUNED_PARAMS_PATH.exists():
         return json.loads(config.MULTI_TUNED_PARAMS_PATH.read_text())
     return {}
@@ -155,6 +164,7 @@ def build_ranking(df: pd.DataFrame, names: Optional[List[str]], use_gru: bool,
         "horizon": HORIZON[config.MULTI_TARGET],
         "models": list(P.columns),
         "tuned_models": sorted(tuned),
+        "tuned_at": _tuned_at() if tuned else None,
         "top_k": k,
         "n_stocks": n,
         "n_train_rows": int(trm.sum()),
