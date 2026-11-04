@@ -151,6 +151,10 @@ def build_features(panel: pd.DataFrame = None) -> pd.DataFrame:
     # targets and references (aligned to row T)
     feats["target_ret"] = panel.loc[feats.index, "target_ret"]
     feats["target_dir"] = panel.loc[feats.index, "target_dir"]
+    feats["target_oc_ret"] = panel.loc[feats.index, "target_oc_ret"]
+    feats["target_oc_dir"] = panel.loc[feats.index, "target_oc_dir"]
+    feats["ref_hsi_open"] = panel.loc[feats.index, f"{config.TARGET_NAME}_open"]
+
     feats["next_date"] = panel.loc[feats.index, "next_date"]
     feats["ref_hsi_close"] = panel.loc[feats.index, f"{config.TARGET_NAME}_close"]
 
