@@ -38,7 +38,6 @@ class LGBMModel:
         )
         self.params.update(overrides or {})
 
-
     def fit(self, X: pd.DataFrame, y: np.ndarray) -> "LGBMModel":
         c = _cut(len(X))
         self.cols = list(X.columns)
