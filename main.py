@@ -98,6 +98,7 @@ def main() -> int:
 
     # 3) live prediction (retrains every model on the latest window)
     live = pipeline.run_live(X, y, n_lab, feats, args.models, oos, tune=args.tune)
+    config.LIVE_PATH.write_text(json.dumps(live, indent=2, default=str, ensure_ascii=False))
     log.info("live type=%s keys=%s", type(live).__name__,
              list(live.keys()) if hasattr(live, "keys") else live)
 
