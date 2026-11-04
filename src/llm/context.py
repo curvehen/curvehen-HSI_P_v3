@@ -9,7 +9,7 @@ from src import config
 from src.features import candles
 
 _PREFIX_ATTRS = ("TARGET_PREFIX", "TARGET_KEY", "TARGET_NAME", "TARGET_SLUG")
-_T = next((getattr(config, a) for a in _PREFIX_ATTRS if getattr(config, a, None)), None)
+_T = config.TARGET_NAME
 if _T is None:
     raise RuntimeError(f"No target prefix found in config; tried {_PREFIX_ATTRS}")
     
