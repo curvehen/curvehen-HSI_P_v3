@@ -66,9 +66,10 @@ def build_context(live: dict, feats: pd.DataFrame) -> str:
         "units": "*_ret1 / *_ret5 are log returns (0.01 = 1%); *_d1 are level changes.",
         "model_output": {
             k: live.get(k) for k in (
-                "feature_date", "target_date", "direction", "p_up_ensemble",
+                "feature_date", "target_date", "horizon", "direction", "p_up_ensemble",
                 "model_probs", "weights", "model_agreement", "live_row_nan",
             )
+
         },
         "target_recent_closes": history,
         "latest_feature_snapshot": snapshot,
