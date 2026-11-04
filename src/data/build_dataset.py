@@ -1,7 +1,9 @@
 """Build a leakage-safe raw panel indexed by HK trading date T.
 
 Row T = everything known before the HK open of the next trading day T'.
-Target = log(HSI close T' / HSI close T).
+Targets:
+  target_ret    = log(close T' / close T)    (close-to-close)
+  target_oc_ret = log(close T' / open T')    (open-to-close, tradable)
 
 Alignment groups:
   - HK / Asia (closed before or at HK close): value dated D is used on row D.
@@ -14,10 +16,9 @@ from typing import Dict, Tuple
 
 import numpy as np
 import pandas as pd
-from pandas.tseries.offsets import BDay
 
 from src import config
-from src.data import loaders
+from src.data import hk_calendar, loaders
 
 log = logging.getLogger(__name__)
 
@@ -51,20 +52,19 @@ def _align(keys: pd.DatetimeIndex, right: pd.DataFrame, avail_shift_days: int) -
         return pd.DataFrame(index=keys)
     r = right.sort_index().ffill(limit=config.MAX_STALE_DAYS)
     r = r.copy()
-    r["_avail"] = r.index + pd.Timedelta(days=avail_shift_days)
-    left = pd.DataFrame({"_key": keys})
+    r["_avail"] = (r.index + pd.Timedelta(days=avail_shift_days)).astype("datetime64[ns]")
+    left = pd.DataFrame({"_key": pd.DatetimeIndex(keys).astype("datetime64[ns]")})
     merged = pd.merge_asof(
         left, r.reset_index(drop=True),
         left_on="_key", right_on="_avail",
         direction="backward",
         tolerance=pd.Timedelta(days=config.MAX_STALE_DAYS),
     )
-    merged = merged.drop(columns=["_key", "_avail"])
-    return merged
+    return merged.drop(columns=["_key", "_avail"])
 
 
 def _drop_partial_today(hsi: pd.DataFrame) -> pd.DataFrame:
-    """Avoid using an unfinished intraday HSI bar as a daily close."""
+    """Avoid using an unfinished intraday bar as a daily close."""
     now_hk = pd.Timestamp.now(tz="Asia/Hong_Kong")
     today = now_hk.tz_localize(None).normalize()
     if now_hk.hour < 17:
@@ -73,21 +73,19 @@ def _drop_partial_today(hsi: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_panel(refresh: bool = True) -> pd.DataFrame:
-    hsi_raw = loaders.load_yf(config.TARGET_TICKER, refresh=refresh)
-    if hsi_raw.empty:
-        raise RuntimeError("Cannot load HSI data - aborting.")
-
     tgt = config.TARGET_NAME
-    hsi_raw = _drop_partial_today(hsi_raw)
-    if tgt != "hsi" and "volume" in hsi_raw.columns:
-        hsi_raw = hsi_raw[hsi_raw["volume"] > 0]   # drop suspended / zero-volume days
-    hsi = _prep(hsi_raw, tgt, True).dropna(subset=[f"{tgt}_close"])
-
+    raw = loaders.load_yf(config.TARGET_TICKER, refresh=refresh)
+    if raw.empty:
+        raise RuntimeError(f"Cannot load {config.TARGET_TICKER} data - aborting.")
+    raw = _drop_partial_today(raw)
+    if tgt != "hsi" and "volume" in raw.columns:
+        raw = raw[raw["volume"] > 0]   # drop suspended / zero-volume days
+    hsi = _prep(raw, tgt, True).dropna(subset=[f"{tgt}_close"])
     hk_idx = hsi.index
 
-    # Next HK trading date (T'); last row falls back to the next business day.
+    # Next HK trading date (T'); last row uses the holiday-aware calendar.
     nxt = hk_idx.to_series().shift(-1)
-    nxt.iloc[-1] = hk_idx[-1] + BDay(1)
+    nxt.iloc[-1] = hk_calendar.next_trading_day(hk_idx[-1])
     next_keys = pd.DatetimeIndex(nxt.values)
 
     # ---- Group 1: HK-session + Asia (same-date) ----
@@ -123,17 +121,18 @@ def build_panel(refresh: bool = True) -> pd.DataFrame:
     panel = pd.concat([hsi, same_aligned, late_aligned], axis=1)
     panel = panel.loc[:, ~panel.columns.duplicated()]
 
-    # ---- Target (last row is NaN = live inference row) ----
-    close = panel[f"{config.TARGET_NAME}_close"]
+    # ---- Targets (last row is NaN = live inference row) ----
+    close = panel[f"{tgt}_close"]
     panel["target_ret"] = np.log(close.shift(-1) / close)
     panel["target_dir"] = (panel["target_ret"] > 0).astype(float)
     panel.loc[panel["target_ret"].isna(), "target_dir"] = np.nan
-    opn = panel[f"{config.TARGET_NAME}_open"].where(lambda s: s > 0)
+
+    opn = panel[f"{tgt}_open"].where(lambda s: s > 0)
     panel["target_oc_ret"] = np.log(close.shift(-1) / opn.shift(-1))   # open(T') -> close(T')
     panel["target_oc_dir"] = (panel["target_oc_ret"] > 0).astype(float)
     panel.loc[panel["target_oc_ret"].isna(), "target_oc_dir"] = np.nan
-    panel["next_date"] = next_keys
 
+    panel["next_date"] = next_keys
 
     _report_quality(panel)
     panel.to_parquet(PANEL_PATH)
@@ -147,7 +146,6 @@ def _report_quality(panel: pd.DataFrame) -> None:
     if not bad.empty:
         log.warning("Columns with >50%% missing: %s", ", ".join(bad.index[:20]))
     log.info("Date range: %s -> %s", panel.index.min().date(), panel.index.max().date())
-
 
 
 def load_panel() -> pd.DataFrame:
