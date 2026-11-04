@@ -74,7 +74,9 @@ def log_prediction(live: dict, llm: dict) -> pd.DataFrame:
 
 def settle(df: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
     idx, close = feats.index, feats["ref_hsi_close"]
+    opn = feats["ref_hsi_open"] if "ref_hsi_open" in feats.columns else None
     n = 0
+
     for i in df.index[df["actual_dir"].isna()]:
         fd = pd.Timestamp(df.at[i, "feature_date"])
         if fd not in idx:
@@ -82,7 +84,13 @@ def settle(df: pd.DataFrame, feats: pd.DataFrame) -> pd.DataFrame:
         pos = idx.get_loc(fd)
         if pos + 1 >= len(idx):
             continue  # outcome not available yet
-        ret = float(np.log(close.iloc[pos + 1] / close.iloc[pos]))
+        if config.HSI_FLAT:    # outcome = open(T') -> close(T')
+            if opn is None or not opn.iloc[pos + 1] > 0:
+                continue       # open missing: leave unsettled
+            ret = float(np.log(close.iloc[pos + 1] / opn.iloc[pos + 1]))
+        else:
+            ret = float(np.log(close.iloc[pos + 1] / close.iloc[pos]))
+
         up = ret > 0
         df.at[i, "actual_date"] = str(idx[pos + 1].date())
         df.at[i, "actual_close"] = float(close.iloc[pos + 1])
