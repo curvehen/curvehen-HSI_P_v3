@@ -293,6 +293,11 @@ def run_live(X: pd.DataFrame, y: np.ndarray, n_lab: int, feats: pd.DataFrame,
         "tuned_at": tuned_at,
         "tuned_oos_weights": bool(tuned) and oos is not None
                              and config.TUNING_LOG_PATH.exists(),
+        "feature_date": str(X.index[-1].date()),
+        "ref_hsi_close": _f(feats["ref_hsi_close"].iloc[-1])
+        if "ref_hsi_close" in feats.columns else None,
+        "p_up_ensemble": _f(p_ens),
+        "model_agreement": _f(agreement),
     }
     return result
 
