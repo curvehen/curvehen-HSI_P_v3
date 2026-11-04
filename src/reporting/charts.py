@@ -98,15 +98,18 @@ def forward_chart(df: pd.DataFrame) -> str:
 def make_all() -> Dict[str, str]:
     """Build every chart that has data. Returns {name: path}; missing ones are omitted."""
     out: Dict[str, str] = {}
-    if config.OOS_PATH.exists():
-        oos = pd.read_parquet(config.OOS_PATH)
+    oos_path, metrics_path = config.active_hsi_paths()
+    if oos_path.exists():
+        oos = pd.read_parquet(oos_path)
+
         if {"ens_weighted", "ens_equal"} <= set(oos.columns):
             out["equity"] = equity_curve(oos)
             out["rolling"] = rolling_accuracy(oos)
     else:
         log.warning("No OOS file: run the backtest first.")
-    if config.METRICS_PATH.exists():
-        out["models"] = model_comparison(pd.read_csv(config.METRICS_PATH, index_col=0))
+    if metrics_path.exists():
+        out["models"] = model_comparison(pd.read_csv(metrics_path, index_col=0))
+
     df = tracker.load_log()
     path = forward_chart(df) if not df.empty else ""
     if path:
