@@ -1,7 +1,9 @@
-"""Single-asset technical indicators for HSI + calendar features.
+"""Single-asset technical indicators + calendar features.
 Everything uses data up to and including row T only (no look-ahead)."""
 import numpy as np
 import pandas as pd
+
+from src.data import hk_calendar
 
 
 def rsi(close: pd.Series, n: int = 14) -> pd.Series:
@@ -20,6 +22,7 @@ def _streak(r1: pd.Series) -> pd.Series:
 
 
 def hsi_technical(df: pd.DataFrame, p: str = "hsi") -> pd.DataFrame:
+    """Technical indicators for the asset whose columns are prefixed with p."""
     o, h, l, c = (df[f"{p}_{k}"] for k in ("open", "high", "low", "close"))
     lc = np.log(c)
     r1 = lc.diff()
@@ -75,11 +78,16 @@ def hsi_technical(df: pd.DataFrame, p: str = "hsi") -> pd.DataFrame:
 
 
 def is_settle_day(dates) -> np.ndarray:
-    """Approx. HSI futures settlement: 2nd-last business day of the month.
-    Ignores HK public holidays, so it can be off by one in some months."""
+    """HSI futures settlement: the trading day before the last trading day of
+    the month, holiday-aware."""
     idx = pd.DatetimeIndex(dates)
-    month_end = idx + pd.offsets.BMonthEnd(0)
-    return np.asarray(idx == (month_end - pd.offsets.BDay(1))).astype(int)
+    last_bd = hk_calendar.last_trading_day_of_month(idx)
+    return np.asarray(idx == (last_bd - hk_calendar.hk_bday())).astype(int)
+
+
+def is_month_end_day(dates) -> np.ndarray:
+    idx = pd.DatetimeIndex(dates)
+    return np.asarray(idx == hk_calendar.last_trading_day_of_month(idx)).astype(int)
 
 
 def calendar_features(index: pd.DatetimeIndex, next_dates: pd.Series) -> pd.DataFrame:
@@ -92,7 +100,7 @@ def calendar_features(index: pd.DatetimeIndex, next_dates: pd.Series) -> pd.Data
             "cal_gap_days": (nd - index).days,           # >1 weekend / holiday
             "cal_settle_today": is_settle_day(index),
             "cal_settle_next": is_settle_day(nd),
-            "cal_month_end_next": (nd == (nd + pd.offsets.BMonthEnd(0))).astype(int),
+            "cal_month_end_next": is_month_end_day(nd),
         },
         index=index,
     )
