@@ -4,6 +4,7 @@ from typing import Iterator, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from src import config
 from src.features.builder import feature_columns
 
 
@@ -47,10 +48,10 @@ def walk_forward_splits(
 
 
 def prepare(feats: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray, int]:
-    """Return (X incl. live row, y with NaN on live row, n_labeled)."""
+    """Return (X incl. live row, y with NaN on live row, n_labeled).
+    The label is the active HSI target (open-to-close or close-to-close)."""
     X = feats[feature_columns(feats)].astype(float)
     y = feats[config.HSI_DIR_COL].values.astype(float)
-
     n_lab = int(np.isfinite(y).sum())
     if n_lab == 0 or not np.isfinite(y[:n_lab]).all():
         raise ValueError("Labelled rows must form a contiguous prefix.")
