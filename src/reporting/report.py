@@ -49,7 +49,8 @@ img{max-width:100%;height:auto}
 
 <h1>{{ label }} next-day forecast</h1>
 <div class="muted">Features as of {{ live.feature_date }} (HK close) &middot;
-Target day {{ live.target_date }} &middot; Reference close {{ live.ref_hsi_close|num(2) }} &middot;
+Target day {{ live.target_date }} &middot; Horizon {{ live.horizon }} &middot; Reference close
+
 Generated {{ live.generated_at }}</div>
 
 {% for w in warnings %}<div class="warn">{{ w }}</div>{% endfor %}
@@ -153,6 +154,10 @@ def build_context() -> dict:
     if not live:
         raise RuntimeError("live_prediction.json missing: run the pipeline in live mode first.")
     warnings: List[str] = []
+    if not config.HSI_FLAT:
+        warnings.append("Close-to-close target: the overnight gap is included, so this is not tradable "
+                        "with US overnight data. Use HSI_TARGET=oc for a tradable estimate.")
+
 
     llm = _json(config.LLM_PATH)
     if llm and abs(float(llm.get("model_p_up", -1)) - float(live["p_up_ensemble"])) > 1e-3:
