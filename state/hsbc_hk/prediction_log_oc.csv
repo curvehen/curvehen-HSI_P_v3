@@ -1,0 +1,2 @@
+feature_date,target_date,logged_at,ref_hsi_close,model_p_up,model_direction,llm_verdict,llm_p_up,final_direction,direction_changed,actual_date,actual_close,actual_ret,actual_dir,model_correct,final_correct
+2026-11-04,2026-11-05,2026-11-05T15:15:20+08:00,136.299988,0.535018,UP,UNAVAILABLE,0.535,UP,0,,,,,,
